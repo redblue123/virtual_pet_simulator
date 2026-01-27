@@ -10,10 +10,25 @@ class UI:
   > ^ <  
 欢迎来到虚拟宠物模拟器！
             """,
-            "pet": """        
-  /\_/\  
- ( o.o ) 
-  > ^ <  
+            "happy": """        
+   /\_/\  
+  ( ^.^ ) 
+   > ^ <  
+            """,
+            "hungry": """        
+   /\_/\  
+  ( o.o ) 
+   > ~ <  
+            """,
+            "sleeping": """        
+   /\_/\  
+  ( -.- ) 
+   > o <  
+            """,
+            "sick": """        
+   /\_/\  
+  ( x.x ) 
+   > ~ <  
             """,
             "goodbye": """        
   /\_/\  
@@ -38,7 +53,18 @@ class UI:
     
     def display_pet_status(self, pet):
         """显示宠物状态"""
-        print(self.ascii_art["pet"])
+        # 根据宠物状态显示不同的ASCII艺术
+        if pet.is_sleeping:
+            print(self.ascii_art["sleeping"])
+        elif pet.is_sick:
+            print(self.ascii_art["sick"])
+        elif pet.hunger > 70:
+            print(self.ascii_art["hungry"])
+        elif pet.happiness > 70:
+            print(self.ascii_art["happy"])
+        else:
+            print(self.ascii_art["hungry"])
+        
         print(f"宠物名称: {pet.name}")
         print(f"宠物种类: {pet.species}")
         print(f"年龄: {pet.age_in_days} 天")
