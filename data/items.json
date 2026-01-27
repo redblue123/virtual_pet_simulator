@@ -1,0 +1,44 @@
+{
+  "items": [
+    {
+      "name": "食物",
+      "description": "增加宠物的饥饿度",
+      "effect": {
+        "hunger": 30,
+        "happiness": 10
+      }
+    },
+    {
+      "name": "玩具",
+      "description": "增加宠物的快乐度",
+      "effect": {
+        "happiness": 30,
+        "energy": -10
+      }
+    },
+    {
+      "name": "枕头",
+      "description": "增加宠物的精力值",
+      "effect": {
+        "energy": 40,
+        "hunger": -5
+      }
+    },
+    {
+      "name": "零食",
+      "description": "小幅增加宠物的饥饿度和快乐度",
+      "effect": {
+        "hunger": 15,
+        "happiness": 15
+      }
+    },
+    {
+      "name": "球",
+      "description": "增加宠物的快乐度和消耗精力",
+      "effect": {
+        "happiness": 25,
+        "energy": -15
+      }
+    }
+  ]
+}
