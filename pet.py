@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 class PetState(Enum):
     """宠物状态枚举"""
@@ -713,3 +713,413 @@ class VirtualPet:
         
         print(f"✨ 已加载宠物: {pet.name} (等级 {pet.level})")
         return pet
+
+
+class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为和从交互中学习
+    """智能宠物类 - 第一阶段基础智能体"""
+    def __init__(self, name="未命名", species="未知"):
+        super().__init__(name, species)
+        
+        # 智能体相关属性
+        self.decision_system = DecisionSystem(self)
+        self.behavior_system = BehaviorSystem(self)
+        self.learning_system = LearningSystem(self)
+        
+        # 主动行为相关
+        self.last_spontaneous_action = time.time()
+        self.spontaneous_action_cooldown = 30  # 自发行为冷却时间（秒）
+        
+        # 用户偏好记录
+        self.user_preferences = defaultdict(Counter)
+        
+        print(f"🧠 智能宠物 {name} 已激活！")
+    
+    def update(self, current_time=None):
+        """更新宠物状态，包括智能体决策"""
+        super().update(current_time)
+        
+        # 检查是否需要执行自发行为
+        if current_time is None:
+            current_time = time.time()
+        
+        if current_time - self.last_spontaneous_action > self.spontaneous_action_cooldown:
+            self.execute_spontaneous_action()
+            self.last_spontaneous_action = current_time
+    
+    def execute_spontaneous_action(self):
+        """执行自发行为"""
+        # 评估当前状态
+        state_evaluation = self.decision_system.evaluate_state()
+        
+        # 基于状态做出决策
+        action = self.decision_system.make_decision(state_evaluation)
+        
+        if action:
+            # 执行行为
+            result = self.behavior_system.execute_action(action)
+            
+            # 记录行为结果
+            self.learning_system.record_behavior(action, result, state_evaluation)
+            
+            return result
+        
+        return None
+    
+    def interact_with_user(self, interaction_type, **kwargs):
+        """与用户交互并学习"""
+        # 执行传统交互
+        if interaction_type == "feed":
+            food_type = kwargs.get("food_type", "普通食物")
+            result = self.feed(food_type)
+        elif interaction_type == "play":
+            game_type = kwargs.get("game_type", "普通游戏")
+            result = self.play(game_type)
+        elif interaction_type == "sleep":
+            result = self.sleep()
+        elif interaction_type == "wake_up":
+            result = self.wake_up()
+        elif interaction_type == "clean":
+            result = self.clean()
+        elif interaction_type == "train":
+            skill_type = kwargs.get("skill_type", "intelligence")
+            result = self.train(skill_type)
+        elif interaction_type == "change_color":
+            new_color = kwargs.get("new_color", "白色")
+            result = self.change_color(new_color)
+        else:
+            result = "未知交互类型"
+        
+        # 记录用户交互偏好
+        self.learning_system.record_user_interaction(interaction_type, kwargs)
+        
+        # 学习系统更新
+        self.learning_system.learn_from_interaction(interaction_type, result)
+        
+        return result
+    
+    def get_intelligent_status(self):
+        """获取智能体状态"""
+        base_status = self.get_status()
+        
+        # 添加智能体相关信息
+        intelligent_status = {
+            "decision_confidence": self.decision_system.get_confidence(),
+            "predicted_needs": self.decision_system.predict_needs(),
+            "learned_preferences": dict(self.learning_system.get_preferences()),
+            "spontaneous_action_rate": self.behavior_system.get_action_rate(),
+            "next_action_prediction": self.decision_system.predict_next_action()
+        }
+        
+        base_status.update(intelligent_status)
+        return base_status
+
+
+class DecisionSystem:
+    """决策系统 - 基于规则的决策逻辑"""
+    def __init__(self, pet):
+        self.pet = pet
+        self.decision_history = []
+        self.confidence_level = 0.5
+    
+    def evaluate_state(self):
+        """评估当前状态"""
+        needs = self.pet.get_needs_summary()
+        
+        # 优先级评估
+        priority_needs = {
+            "health": 0,
+            "hunger": 0,
+            "energy": 0,
+            "hygiene": 0,
+            "happiness": 0
+        }
+        
+        # 健康优先级
+        if self.pet.health < 30:
+            priority_needs["health"] = 5
+        elif self.pet.health < 60:
+            priority_needs["health"] = 3
+        
+        # 饥饿优先级
+        if self.pet.hunger > 80:
+            priority_needs["hunger"] = 4
+        elif self.pet.hunger > 60:
+            priority_needs["hunger"] = 2
+        
+        # 精力优先级
+        if self.pet.energy < 20:
+            priority_needs["energy"] = 4
+        elif self.pet.energy < 40:
+            priority_needs["energy"] = 2
+        
+        # 清洁优先级
+        if self.pet.hygiene < 20:
+            priority_needs["hygiene"] = 3
+        elif self.pet.hygiene < 40:
+            priority_needs["hygiene"] = 1
+        
+        # 快乐优先级
+        if self.pet.happiness < 20:
+            priority_needs["happiness"] = 3
+        elif self.pet.happiness < 40:
+            priority_needs["happiness"] = 1
+        
+        # 特殊状态
+        if self.pet.is_sick:
+            priority_needs["health"] = max(priority_needs["health"], 5)
+        
+        if self.pet.is_sleeping:
+            priority_needs["energy"] = 0  # 睡觉时不考虑精力
+        
+        return {
+            "needs": needs,
+            "priority_needs": priority_needs,
+            "current_state": self.pet.state.value,
+            "mood": self.pet.mood.value,
+            "is_sleeping": self.pet.is_sleeping,
+            "is_sick": self.pet.is_sick
+        }
+    
+    def make_decision(self, state_evaluation):
+        """基于状态做出决策"""
+        if self.pet.is_sleeping:
+            # 检查是否需要醒来
+            if self.pet.energy > 90:
+                return "wake_up"
+            return None
+        
+        # 基于优先级需求做出决策
+        priority_needs = state_evaluation["priority_needs"]
+        highest_priority = max(priority_needs.items(), key=lambda x: x[1])
+        
+        if highest_priority[1] == 0:
+            # 所有需求都得到满足，随机选择一个愉悦行为
+            return random.choice(["play", "explore"])
+        
+        # 根据最高优先级需求选择行为
+        if highest_priority[0] == "health":
+            if self.pet.is_sick:
+                return "rest"
+            else:
+                return "rest"
+        elif highest_priority[0] == "hunger":
+            return "beg_for_food"
+        elif highest_priority[0] == "energy":
+            return "sleep"
+        elif highest_priority[0] == "hygiene":
+            return "groom"
+        elif highest_priority[0] == "happiness":
+            return "play"
+        
+        return "explore"
+    
+    def get_confidence(self):
+        """获取决策信心"""
+        # 基于状态评估的确定性计算信心
+        return min(1.0, self.confidence_level + len(self.decision_history) * 0.01)
+    
+    def predict_needs(self):
+        """预测未来需求"""
+        # 基于当前状态和历史模式预测需求
+        predictions = []
+        
+        if self.pet.hunger > 60:
+            predictions.append("hunger")
+        if self.pet.energy < 40:
+            predictions.append("energy")
+        if self.pet.hygiene < 40:
+            predictions.append("hygiene")
+        
+        return predictions
+    
+    def predict_next_action(self):
+        """预测下一个行为"""
+        state_evaluation = self.evaluate_state()
+        return self.make_decision(state_evaluation)
+
+
+class BehaviorSystem:
+    """行为系统 - 执行自主行为"""
+    def __init__(self, pet):
+        self.pet = pet
+        self.action_history = []
+        self.action_success_rate = defaultdict(float)
+    
+    def execute_action(self, action):
+        """执行选定的行为"""
+        if action is None:
+            return "无行为执行"
+        
+        # 记录行为
+        self.action_history.append((action, time.time()))
+        
+        # 执行行为
+        if action == "wake_up":
+            return self.pet.wake_up()
+        elif action == "sleep":
+            return self.pet.sleep()
+        elif action == "beg_for_food":
+            return self._beg_for_food()
+        elif action == "groom":
+            return self._groom()
+        elif action == "play":
+            return self._spontaneous_play()
+        elif action == "rest":
+            return self._rest()
+        elif action == "explore":
+            return self._explore()
+        
+        return f"执行行为: {action}"
+    
+    def _beg_for_food(self):
+        """向主人乞讨食物"""
+        self.pet.happiness += 5  # 乞讨行为增加一点快乐
+        return f"{self.pet.name}：'我饿了，想吃东西！'"
+    
+    def _groom(self):
+        """自我清洁"""
+        hygiene_gain = 15
+        self.pet.hygiene = min(100, self.pet.hygiene + hygiene_gain)
+        self.pet.happiness += 5
+        return f"{self.pet.name}正在舔毛清洁自己"
+    
+    def _spontaneous_play(self):
+        """自发玩耍"""
+        if self.pet.energy < 20:
+            return f"{self.pet.name}：'我太累了，想休息'"
+        
+        energy_cost = 10
+        happiness_gain = 15
+        
+        self.pet.energy = max(0, self.pet.energy - energy_cost)
+        self.pet.happiness = min(100, self.pet.happiness + happiness_gain)
+        
+        return f"{self.pet.name}正在开心地玩耍"
+    
+    def _rest(self):
+        """休息恢复"""
+        energy_gain = 20
+        health_gain = 5
+        
+        self.pet.energy = min(100, self.pet.energy + energy_gain)
+        self.pet.health = min(100, self.pet.health + health_gain)
+        
+        return f"{self.pet.name}正在休息恢复精力"
+    
+    def _explore(self):
+        """探索环境"""
+        if self.pet.energy < 15:
+            return f"{self.pet.name}：'我太累了，不想动'"
+        
+        energy_cost = 15
+        happiness_gain = 10
+        intelligence_gain = 0.5
+        
+        self.pet.energy = max(0, self.pet.energy - energy_cost)
+        self.pet.happiness = min(100, self.pet.happiness + happiness_gain)
+        self.pet.skills["intelligence"] += intelligence_gain
+        
+        return f"{self.pet.name}正在好奇地探索周围环境"
+    
+    def get_action_rate(self):
+        """获取行为频率"""
+        # 计算最近行为频率
+        recent_actions = [a for a, t in self.action_history if time.time() - t < 3600]
+        return len(recent_actions) / 60.0  # 每小时行为数
+
+
+class LearningSystem:
+    """学习系统 - 记录用户偏好和行为模式"""
+    def __init__(self, pet):
+        self.pet = pet
+        self.interaction_history = []
+        self.behavior_effects = defaultdict(list)
+        self.time_based_preferences = defaultdict(Counter)
+    
+    def record_user_interaction(self, interaction_type, kwargs):
+        """记录用户交互"""
+        timestamp = time.time()
+        hour = datetime.fromtimestamp(timestamp).hour
+        
+        self.interaction_history.append({
+            "type": interaction_type,
+            "kwargs": kwargs,
+            "timestamp": timestamp,
+            "hour": hour
+        })
+        
+        # 记录时间偏好
+        self.time_based_preferences[hour][interaction_type] += 1
+        
+        # 记录具体偏好
+        if interaction_type == "feed" and "food_type" in kwargs:
+            self.pet.user_preferences["food"][kwargs["food_type"]] += 1
+        elif interaction_type == "play" and "game_type" in kwargs:
+            self.pet.user_preferences["game"][kwargs["game_type"]] += 1
+        elif interaction_type == "train" and "skill_type" in kwargs:
+            self.pet.user_preferences["skill"][kwargs["skill_type"]] += 1
+    
+    def record_behavior(self, action, result, state_evaluation):
+        """记录行为结果"""
+        self.behavior_effects[action].append({
+            "result": result,
+            "state_before": state_evaluation,
+            "timestamp": time.time()
+        })
+    
+    def learn_from_interaction(self, interaction_type, result):
+        """从交互中学习"""
+        # 简单的强化学习 - 基于结果调整偏好
+        if "成功" in result or "开心" in result:
+            # 正面结果，增加该行为偏好
+            self.pet.routine_preferences[interaction_type] += 2
+        elif "无法" in result or "太累" in result:
+            # 负面结果，减少该行为偏好
+            if self.pet.routine_preferences[interaction_type] > 0:
+                self.pet.routine_preferences[interaction_type] -= 1
+    
+    def get_preferences(self):
+        """获取学习到的偏好"""
+        preferences = {}
+        
+        # 食物偏好
+        if self.pet.user_preferences["food"]:
+            preferences["food"] = dict(self.pet.user_preferences["food"])
+        
+        # 游戏偏好
+        if self.pet.user_preferences["game"]:
+            preferences["game"] = dict(self.pet.user_preferences["game"])
+        
+        # 技能训练偏好
+        if self.pet.user_preferences["skill"]:
+            preferences["skill"] = dict(self.pet.user_preferences["skill"])
+        
+        # 时间偏好
+        time_preferences = {}
+        for hour, counts in self.time_based_preferences.items():
+            if counts:
+                time_preferences[hour] = dict(counts)
+        
+        if time_preferences:
+            preferences["time"] = time_preferences
+        
+        return preferences
+    
+    def predict_user_action(self, hour=None):
+        """预测用户可能的行为"""
+        if hour is None:
+            hour = datetime.now().hour
+        
+        # 基于时间的行为预测
+        if hour in self.time_based_preferences:
+            most_common = self.time_based_preferences[hour].most_common(1)
+            if most_common:
+                return most_common[0][0]
+        
+        # 基于历史频率的预测
+        if self.interaction_history:
+            recent_interactions = [i["type"] for i in self.interaction_history[-10:]]
+            if recent_interactions:
+                return Counter(recent_interactions).most_common(1)[0][0]
+        
+        return None
