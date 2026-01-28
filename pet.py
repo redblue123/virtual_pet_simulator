@@ -652,11 +652,18 @@ class VirtualPet:
             "is_sleeping": self.is_sleeping,
             "is_sick": self.is_sick,
             "sickness_type": self.sickness_type,
-            "last_update_time": self.last_update_time
+            "last_update_time": self.last_update_time,
+            "accessories": self.accessories,
+            "needs_update": self.needs_update
         }
         
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        # 保存强化学习数据（如果有）
+        if hasattr(self, 'reinforcement_learning'):
+            rl_filename = filename.replace('.json', '_rl.json')
+            self.reinforcement_learning.save_learning_data(rl_filename)
         
         return True
     
@@ -699,6 +706,7 @@ class VirtualPet:
         # 恢复外观
         pet.color = data["color"]
         pet.size = data["size"]
+        pet.accessories = data.get("accessories", [])
         
         # 恢复特殊状态
         pet.is_sleeping = data["is_sleeping"]
@@ -707,6 +715,13 @@ class VirtualPet:
         
         # 恢复时间
         pet.last_update_time = data["last_update_time"]
+        pet.needs_update = data.get("needs_update", True)
+        
+        # 加载强化学习数据（如果有）
+        if hasattr(pet, 'reinforcement_learning'):
+            rl_filename = filename.replace('.json', '_rl.json')
+            if os.path.exists(rl_filename):
+                pet.reinforcement_learning.load_learning_data(rl_filename)
         
         # 立即更新状态
         pet.update()
@@ -716,7 +731,7 @@ class VirtualPet:
 
 
 class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为和从交互中学习
-    """智能宠物类 - 第一阶段基础智能体"""
+    """智能宠物类 - 第二阶段强化学习智能体"""
     def __init__(self, name="未命名", species="未知"):
         super().__init__(name, species)
         
@@ -724,6 +739,12 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
         self.decision_system = DecisionSystem(self)
         self.behavior_system = BehaviorSystem(self)
         self.learning_system = LearningSystem(self)
+        
+        # 第二阶段：强化学习系统
+        self.reinforcement_learning = ReinforcementLearningSystem(self)
+        
+        # 第二阶段：行为树系统
+        self.behavior_tree = BehaviorTreeBuilder.build_pet_behavior_tree()
         
         # 主动行为相关
         self.last_spontaneous_action = time.time()
@@ -733,6 +754,8 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
         self.user_preferences = defaultdict(Counter)
         
         print(f"🧠 智能宠物 {name} 已激活！")
+        print(f"🚀 强化学习系统已启动！")
+        print(f"🌳 行为树系统已初始化！")
     
     def update(self, current_time=None):
         """更新宠物状态，包括智能体决策"""
@@ -747,23 +770,82 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
             self.last_spontaneous_action = current_time
     
     def execute_spontaneous_action(self):
-        """执行自发行为"""
-        # 评估当前状态
-        state_evaluation = self.decision_system.evaluate_state()
-        
-        # 基于状态做出决策
-        action = self.decision_system.make_decision(state_evaluation)
+        """执行自发行为（使用强化学习和行为树）"""
+        # 第二阶段：优先使用强化学习决策
+        state_before = self.reinforcement_learning.get_discrete_state()
+        action = self.reinforcement_learning.choose_action(state_before)
         
         if action:
             # 执行行为
-            result = self.behavior_system.execute_action(action)
+            result = self._execute_action(action)
+            
+            # 评估执行后的状态
+            state_after = self.reinforcement_learning.get_discrete_state()
+            
+            # 计算奖励
+            reward = self.reinforcement_learning.calculate_reward(
+                dict(state_before), action, dict(state_after)
+            )
+            
+            # 强化学习
+            self.reinforcement_learning.learn(state_before, action, reward, state_after, False)
             
             # 记录行为结果
-            self.learning_system.record_behavior(action, result, state_evaluation)
+            self.learning_system.record_behavior(action, result, {})
             
             return result
+        else:
+            # 备用：使用行为树
+            return self.execute_behavior_tree_action()
+    
+    def execute_behavior_tree_action(self):
+        """执行行为树动作"""
+        status = self.behavior_tree.execute(self)
+        return f"行为树执行状态: {status}"
+    
+    def _execute_action(self, action):
+        """执行具体行为"""
+        if action == "feed":
+            return self.feed("普通食物")
+        elif action == "play":
+            return self.play("普通游戏")
+        elif action == "sleep":
+            return self.sleep()
+        elif action == "clean":
+            return self.clean()
+        elif action == "train":
+            return self.train("intelligence")
+        elif action == "explore":
+            return self._explore()
+        elif action == "rest":
+            return self._rest()
+        else:
+            return f"执行行为: {action}"
+    
+    def _explore(self):
+        """探索环境"""
+        if self.energy < 15:
+            return f"{self.name}：'我太累了，不想动'"
         
-        return None
+        energy_cost = 15
+        happiness_gain = 10
+        intelligence_gain = 0.5
+        
+        self.energy = max(0, self.energy - energy_cost)
+        self.happiness = min(100, self.happiness + happiness_gain)
+        self.skills["intelligence"] += intelligence_gain
+        
+        return f"{self.name}正在好奇地探索周围环境"
+    
+    def _rest(self):
+        """休息恢复"""
+        energy_gain = 20
+        health_gain = 5
+        
+        self.energy = min(100, self.energy + energy_gain)
+        self.health = min(100, self.health + health_gain)
+        
+        return f"{self.name}正在休息恢复精力"
     
     def interact_with_user(self, interaction_type, **kwargs):
         """与用户交互并学习"""
@@ -795,7 +877,30 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
         # 学习系统更新
         self.learning_system.learn_from_interaction(interaction_type, result)
         
+        # 第二阶段：强化学习更新
+        state_before = self.reinforcement_learning.get_discrete_state()
+        # 将用户交互映射到强化学习动作
+        rl_action = self._map_interaction_to_rl_action(interaction_type)
+        if rl_action:
+            state_after = self.reinforcement_learning.get_discrete_state()
+            reward = self.reinforcement_learning.calculate_reward(
+                dict(state_before), rl_action, dict(state_after)
+            )
+            self.reinforcement_learning.learn(state_before, rl_action, reward, state_after, False)
+        
         return result
+    
+    def _map_interaction_to_rl_action(self, interaction_type):
+        """将用户交互映射到强化学习动作"""
+        mapping = {
+            "feed": "feed",
+            "play": "play",
+            "sleep": "sleep",
+            "wake_up": "explore",  # 醒来后探索
+            "clean": "clean",
+            "train": "train"
+        }
+        return mapping.get(interaction_type)
     
     def get_intelligent_status(self):
         """获取智能体状态"""
@@ -807,11 +912,47 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
             "predicted_needs": self.decision_system.predict_needs(),
             "learned_preferences": dict(self.learning_system.get_preferences()),
             "spontaneous_action_rate": self.behavior_system.get_action_rate(),
-            "next_action_prediction": self.decision_system.predict_next_action()
+            "next_action_prediction": self.decision_system.predict_next_action(),
+            # 第二阶段：强化学习信息
+            "reinforcement_learning": self.reinforcement_learning.get_learning_stats()
         }
         
         base_status.update(intelligent_status)
         return base_status
+    
+    def get_learning_progress(self):
+        """获取学习进度"""
+        return {
+            "exploration_rate": self.reinforcement_learning.exploration_rate,
+            "average_reward": self.reinforcement_learning.average_reward,
+            "learning_steps": self.reinforcement_learning.learning_steps,
+            "q_table_size": sum(len(v) for v in self.reinforcement_learning.q_table.values())
+        }
+    
+    def beg_for_food(self):
+        """向主人乞讨食物"""
+        self.happiness += 5  # 乞讨行为增加一点快乐
+        return f"{self.name}：'我饿了，想吃东西！'"
+    
+    def groom(self):
+        """自我清洁"""
+        hygiene_gain = 15
+        self.hygiene = min(100, self.hygiene + hygiene_gain)
+        self.happiness += 5
+        return f"{self.name}正在舔毛清洁自己"
+    
+    def spontaneous_play(self):
+        """自发玩耍"""
+        if self.energy < 20:
+            return f"{self.name}：'我太累了，想休息'"
+        
+        energy_cost = 10
+        happiness_gain = 15
+        
+        self.energy = max(0, self.energy - energy_cost)
+        self.happiness = min(100, self.happiness + happiness_gain)
+        
+        return f"{self.name}正在开心地玩耍"
 
 
 class DecisionSystem:
@@ -1123,3 +1264,409 @@ class LearningSystem:
                 return Counter(recent_interactions).most_common(1)[0][0]
         
         return None
+
+
+class ReinforcementLearningSystem:
+    """强化学习系统 - 基于Q-learning的智能决策"""
+    def __init__(self, pet, learning_rate=0.1, discount_factor=0.9, exploration_rate=1.0, exploration_decay=0.995, min_exploration=0.1):
+        self.pet = pet
+        self.learning_rate = learning_rate
+        self.discount_factor = discount_factor
+        self.exploration_rate = exploration_rate
+        self.exploration_decay = exploration_decay
+        self.min_exploration = min_exploration
+        
+        # Q-table 存储
+        self.q_table = defaultdict(lambda: defaultdict(float))
+        
+        # 经验回放缓存
+        self.replay_buffer = []
+        self.buffer_size = 1000
+        
+        # 状态离散化参数
+        self.state_bins = {
+            "health": [0, 30, 60, 100],
+            "hunger": [0, 30, 60, 100],
+            "energy": [0, 30, 60, 100],
+            "hygiene": [0, 30, 60, 100],
+            "happiness": [0, 30, 60, 100]
+        }
+        
+        # 动作空间
+        self.actions = ["feed", "play", "sleep", "clean", "train", "explore", "rest"]
+        
+        # 学习统计
+        self.learning_steps = 0
+        self.total_reward = 0
+        self.average_reward = 0
+        
+        print("🧠 强化学习系统已初始化！")
+    
+    def get_discrete_state(self):
+        """获取离散化的状态"""
+        state = {
+            "health": self._discretize_value(self.pet.health, self.state_bins["health"]),
+            "hunger": self._discretize_value(self.pet.hunger, self.state_bins["hunger"]),
+            "energy": self._discretize_value(self.pet.energy, self.state_bins["energy"]),
+            "hygiene": self._discretize_value(self.pet.hygiene, self.state_bins["hygiene"]),
+            "happiness": self._discretize_value(self.pet.happiness, self.state_bins["happiness"]),
+            "is_sleeping": int(self.pet.is_sleeping),
+            "is_sick": int(self.pet.is_sick)
+        }
+        
+        # 转换为元组以便作为字典键
+        return tuple(sorted(state.items()))
+    
+    def _discretize_value(self, value, bins):
+        """将连续值离散化"""
+        for i, bin_threshold in enumerate(bins):
+            if value <= bin_threshold:
+                return i
+        return len(bins) - 1
+    
+    def choose_action(self, state):
+        """基于ε-贪婪策略选择动作"""
+        # 探索
+        if random.uniform(0, 1) < self.exploration_rate:
+            return random.choice(self.actions)
+        # 利用
+        else:
+            q_values = self.q_table[state]
+            if q_values:
+                return max(q_values, key=q_values.get)
+            else:
+                return random.choice(self.actions)
+    
+    def calculate_reward(self, state_before, action, state_after):
+        """计算奖励"""
+        reward = 0
+        
+        # 基础奖励：维持良好状态
+        if state_after["health"] >= 3:
+            reward += 1.0
+        if state_after["hunger"] <= 1:
+            reward += 1.0
+        if state_after["energy"] >= 3:
+            reward += 0.5
+        if state_after["hygiene"] >= 3:
+            reward += 0.5
+        if state_after["happiness"] >= 3:
+            reward += 1.0
+        
+        # 惩罚：不良状态
+        if state_after["health"] <= 0:
+            reward -= 2.0
+        if state_after["hunger"] >= 3:
+            reward -= 1.5
+        if state_after["energy"] <= 0:
+            reward -= 1.0
+        if state_after["hygiene"] <= 0:
+            reward -= 0.5
+        if state_after["happiness"] <= 0:
+            reward -= 1.0
+        
+        # 特殊状态奖励/惩罚
+        if state_after["is_sick"]:
+            reward -= 2.0
+        if state_after["is_sleeping"] and state_after["energy"] < 3:
+            reward += 0.5
+        
+        # 动作特定奖励
+        if action == "feed" and state_after["hunger"] < state_before["hunger"]:
+            reward += 1.0
+        if action == "play" and state_after["happiness"] > state_before["happiness"]:
+            reward += 0.8
+        if action == "sleep" and state_after["energy"] > state_before["energy"]:
+            reward += 0.6
+        if action == "clean" and state_after["hygiene"] > state_before["hygiene"]:
+            reward += 0.4
+        if action == "train" and any(skill > 1 for skill in self.pet.skills.values()):
+            reward += 0.3
+        if action == "explore":
+            reward += 0.2
+        if action == "rest" and state_after["health"] > state_before["health"]:
+            reward += 0.5
+        
+        return reward
+    
+    def learn(self, state_before, action, reward, state_after, done):
+        """执行Q-learning学习"""
+        # 存储经验
+        self.replay_buffer.append((state_before, action, reward, state_after, done))
+        
+        # 限制缓冲区大小
+        if len(self.replay_buffer) > self.buffer_size:
+            self.replay_buffer.pop(0)
+        
+        # 从缓冲区采样批次
+        batch_size = min(32, len(self.replay_buffer))
+        batch = random.sample(self.replay_buffer, batch_size)
+        
+        for s, a, r, s_next, d in batch:
+            # 计算目标Q值
+            if d:
+                target_q = r
+            else:
+                next_max_q = max(self.q_table[s_next].values()) if self.q_table[s_next] else 0
+                target_q = r + self.discount_factor * next_max_q
+            
+            # 更新Q值
+            current_q = self.q_table[s].get(a, 0)
+            new_q = current_q + self.learning_rate * (target_q - current_q)
+            self.q_table[s][a] = new_q
+        
+        # 衰减探索率
+        self.exploration_rate = max(self.min_exploration, self.exploration_rate * self.exploration_decay)
+        
+        # 更新学习统计
+        self.learning_steps += 1
+        self.total_reward += reward
+        self.average_reward = self.total_reward / self.learning_steps
+        
+        return reward
+    
+    def get_learning_stats(self):
+        """获取学习统计信息"""
+        return {
+            "learning_steps": self.learning_steps,
+            "total_reward": self.total_reward,
+            "average_reward": self.average_reward,
+            "exploration_rate": self.exploration_rate,
+            "buffer_size": len(self.replay_buffer),
+            "q_table_size": sum(len(v) for v in self.q_table.values())
+        }
+    
+    def save_learning_data(self, filename):
+        """保存学习数据"""
+        data = {
+            "q_table": {str(k): v for k, v in self.q_table.items()},
+            "learning_steps": self.learning_steps,
+            "total_reward": self.total_reward,
+            "exploration_rate": self.exploration_rate,
+            "replay_buffer": self.replay_buffer
+        }
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        return True
+    
+    def load_learning_data(self, filename):
+        """加载学习数据"""
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 恢复Q-table
+            self.q_table = defaultdict(lambda: defaultdict(float))
+            for state_str, actions in data.get("q_table", {}).items():
+                # 解析状态字符串
+                state = eval(state_str)
+                self.q_table[state] = defaultdict(float, actions)
+            
+            # 恢复其他参数
+            self.learning_steps = data.get("learning_steps", 0)
+            self.total_reward = data.get("total_reward", 0)
+            self.exploration_rate = data.get("exploration_rate", self.exploration_rate)
+            self.replay_buffer = data.get("replay_buffer", [])
+            
+            print("🧠 学习数据加载成功！")
+            return True
+        except Exception as e:
+            print(f"❌ 加载学习数据失败: {e}")
+            return False
+
+
+# 行为树系统
+class BehaviorTreeNode:
+    """行为树节点基类"""
+    def __init__(self, name=""):
+        self.name = name
+    
+    def execute(self, pet):
+        """执行节点"""
+        raise NotImplementedError
+
+class BehaviorTreeStatus:
+    """行为树状态"""
+    SUCCESS = "success"
+    FAILURE = "failure"
+    RUNNING = "running"
+
+class CompositeNode(BehaviorTreeNode):
+    """组合节点基类"""
+    def __init__(self, name=""):
+        super().__init__(name)
+        self.children = []
+    
+    def add_child(self, child):
+        """添加子节点"""
+        self.children.append(child)
+        return self
+
+class SequenceNode(CompositeNode):
+    """序列节点 - 按顺序执行子节点，直到一个失败"""
+    def execute(self, pet):
+        for child in self.children:
+            status = child.execute(pet)
+            if status != BehaviorTreeStatus.SUCCESS:
+                return status
+        return BehaviorTreeStatus.SUCCESS
+
+class SelectorNode(CompositeNode):
+    """选择节点 - 按顺序执行子节点，直到一个成功"""
+    def execute(self, pet):
+        for child in self.children:
+            status = child.execute(pet)
+            if status != BehaviorTreeStatus.FAILURE:
+                return status
+        return BehaviorTreeStatus.FAILURE
+
+class ParallelNode(CompositeNode):
+    """并行节点 - 同时执行所有子节点"""
+    def __init__(self, name="", success_threshold=1):
+        super().__init__(name)
+        self.success_threshold = success_threshold
+    
+    def execute(self, pet):
+        success_count = 0
+        failure_count = 0
+        
+        for child in self.children:
+            status = child.execute(pet)
+            if status == BehaviorTreeStatus.SUCCESS:
+                success_count += 1
+            elif status == BehaviorTreeStatus.FAILURE:
+                failure_count += 1
+        
+        if success_count >= self.success_threshold:
+            return BehaviorTreeStatus.SUCCESS
+        elif failure_count == len(self.children):
+            return BehaviorTreeStatus.FAILURE
+        else:
+            return BehaviorTreeStatus.RUNNING
+
+class DecoratorNode(BehaviorTreeNode):
+    """装饰节点基类"""
+    def __init__(self, child, name=""):
+        super().__init__(name)
+        self.child = child
+
+class InverterNode(DecoratorNode):
+    """取反节点 - 反转子节点的结果"""
+    def execute(self, pet):
+        status = self.child.execute(pet)
+        if status == BehaviorTreeStatus.SUCCESS:
+            return BehaviorTreeStatus.FAILURE
+        elif status == BehaviorTreeStatus.FAILURE:
+            return BehaviorTreeStatus.SUCCESS
+        else:
+            return status
+
+class RepeaterNode(DecoratorNode):
+    """重复节点 - 重复执行子节点"""
+    def __init__(self, child, count=-1, name=""):
+        super().__init__(child, name)
+        self.count = count  # -1 表示无限重复
+        self.current_count = 0
+    
+    def execute(self, pet):
+        if self.count == -1 or self.current_count < self.count:
+            status = self.child.execute(pet)
+            if status != BehaviorTreeStatus.RUNNING:
+                self.current_count += 1
+            return BehaviorTreeStatus.RUNNING
+        else:
+            self.current_count = 0
+            return BehaviorTreeStatus.SUCCESS
+
+class SucceederNode(DecoratorNode):
+    """成功节点 - 总是返回成功"""
+    def execute(self, pet):
+        self.child.execute(pet)
+        return BehaviorTreeStatus.SUCCESS
+
+class ConditionNode(BehaviorTreeNode):
+    """条件节点 - 检查条件"""
+    def __init__(self, condition_func, name=""):
+        super().__init__(name)
+        self.condition_func = condition_func
+    
+    def execute(self, pet):
+        if self.condition_func(pet):
+            return BehaviorTreeStatus.SUCCESS
+        else:
+            return BehaviorTreeStatus.FAILURE
+
+class ActionNode(BehaviorTreeNode):
+    """行为节点 - 执行具体行为"""
+    def __init__(self, action_func, name=""):
+        super().__init__(name)
+        self.action_func = action_func
+    
+    def execute(self, pet):
+        result = self.action_func(pet)
+        if result:
+            return BehaviorTreeStatus.SUCCESS
+        else:
+            return BehaviorTreeStatus.FAILURE
+
+class BehaviorTree:
+    """行为树"""
+    def __init__(self, root_node):
+        self.root = root_node
+    
+    def execute(self, pet):
+        """执行行为树"""
+        return self.root.execute(pet)
+
+class BehaviorTreeBuilder:
+    """行为树构建器"""
+    @staticmethod
+    def build_pet_behavior_tree():
+        """构建宠物行为树"""
+        # 健康检查序列
+        health_check = SequenceNode("健康检查")
+        health_check.add_child(ConditionNode(lambda p: p.health < 30, "健康低于30"))
+        health_check.add_child(ActionNode(lambda p: p.rest(), "休息恢复"))
+        
+        # 饥饿检查序列
+        hunger_check = SequenceNode("饥饿检查")
+        hunger_check.add_child(ConditionNode(lambda p: p.hunger > 70, "饥饿高于70"))
+        hunger_check.add_child(ActionNode(lambda p: p.beg_for_food(), "乞讨食物"))
+        
+        # 能量检查序列
+        energy_check = SequenceNode("能量检查")
+        energy_check.add_child(ConditionNode(lambda p: p.energy < 20, "能量低于20"))
+        energy_check.add_child(ActionNode(lambda p: p.sleep(), "睡觉恢复"))
+        
+        # 清洁检查序列
+        hygiene_check = SequenceNode("清洁检查")
+        hygiene_check.add_child(ConditionNode(lambda p: p.hygiene < 30, "清洁低于30"))
+        hygiene_check.add_child(ActionNode(lambda p: p.groom(), "自我清洁"))
+        
+        # 快乐检查序列
+        happiness_check = SequenceNode("快乐检查")
+        happiness_check.add_child(ConditionNode(lambda p: p.happiness < 30, "快乐低于30"))
+        happiness_check.add_child(ActionNode(lambda p: p.spontaneous_play(), "自发玩耍"))
+        
+        # 主要行为选择器
+        main_selector = SelectorNode("主要行为选择")
+        main_selector.add_child(health_check)
+        main_selector.add_child(hunger_check)
+        main_selector.add_child(energy_check)
+        main_selector.add_child(hygiene_check)
+        main_selector.add_child(happiness_check)
+        
+        # 探索行为
+        exploration = SequenceNode("探索行为")
+        exploration.add_child(ConditionNode(lambda p: p.energy > 40, "能量高于40"))
+        exploration.add_child(ActionNode(lambda p: p.explore(), "探索环境"))
+        
+        # 最终行为选择器
+        final_selector = SelectorNode("最终行为选择")
+        final_selector.add_child(main_selector)
+        final_selector.add_child(exploration)
+        final_selector.add_child(ActionNode(lambda p: p.rest(), "默认休息"))
+        
+        return BehaviorTree(final_selector)
