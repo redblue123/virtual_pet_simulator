@@ -2,6 +2,7 @@
 import random
 import json
 import time
+import os
 from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
@@ -88,6 +89,11 @@ class VirtualPet:
         self.is_sick = False
         self.sickness_type = None
         
+        # 睡眠相关属性
+        self.sleep_start_time = None  # 睡眠开始时间
+        self.sleep_duration = 0  # 睡眠时长（小时）
+        self.sleep_quality = "普通"  # 睡眠质量
+        
         print(f"✨ 新宠物 {name} 诞生了！")
     
     def _generate_personality(self):
@@ -155,7 +161,12 @@ class VirtualPet:
         if self.is_sleeping:
             # 睡眠时恢复能量
             energy_rate = 15.0  # 每小时恢复
+            old_energy = self.energy
             self.energy = min(100, self.energy + energy_rate * hours_passed)
+            
+            # 当能量达到100%时自动醒来
+            if self.energy >= 100 and old_energy < 100:
+                self.wake_up()
         else:
             # 活跃时消耗能量
             energy_rate = 2.0  # 每小时消耗
@@ -462,9 +473,16 @@ class VirtualPet:
             return "宠物已经在睡觉了"
         
         self.is_sleeping = True
-        self._add_memory("去睡觉了")
+        self.sleep_start_time = time.time()
+        self.sleep_duration = 0
         
-        return f"{self.name}开始睡觉了，晚安！"
+        # 根据性格调整睡眠行为
+        sleep_message = f"{self.name}开始睡觉了，晚安！"
+        if PetPersonality.LAZY in self.personality_traits:
+            sleep_message += " (懒惰的{self.name}可能会睡很久哦)"
+        
+        self._add_memory("去睡觉了")
+        return sleep_message
     
     def wake_up(self):
         """叫醒宠物"""
@@ -473,15 +491,49 @@ class VirtualPet:
         
         self.is_sleeping = False
         
+        # 计算睡眠时长
+        if self.sleep_start_time:
+            self.sleep_duration = (time.time() - self.sleep_start_time) / 3600  # 转换为小时
+        
+        # 评估睡眠质量
+        self._evaluate_sleep_quality()
+        
         # 醒来后的心情受睡眠质量影响
+        happiness_bonus = 0
         if self.energy > 80:
-            self.happiness += 10
+            happiness_bonus = 10
             wake_message = f"{self.name}精神饱满地醒来了！"
         else:
             wake_message = f"{self.name}睡眼惺忪地醒来了"
         
-        self._add_memory("醒来了")
+        # 根据睡眠质量增加额外快乐值
+        if self.sleep_quality == "优秀":
+            happiness_bonus += 5
+            wake_message += f" (睡眠质量优秀，{self.name}感觉非常好！)"
+        elif self.sleep_quality == "良好":
+            happiness_bonus += 2
+            wake_message += f" (睡眠质量良好，{self.name}感觉不错)"
+        
+        self.happiness = min(100, self.happiness + happiness_bonus)
+        
+        # 重置睡眠相关属性
+        self.sleep_start_time = None
+        
+        memory = f"醒来了，睡眠质量：{self.sleep_quality}"
+        self._add_memory(memory)
         return wake_message
+    
+    def _evaluate_sleep_quality(self):
+        """评估睡眠质量"""
+        # 基于睡眠时长和能量恢复情况评估
+        if self.sleep_duration >= 1 and self.energy >= 90:
+            self.sleep_quality = "优秀"
+        elif self.sleep_duration >= 0.5 and self.energy >= 70:
+            self.sleep_quality = "良好"
+        elif self.sleep_duration >= 0.2 and self.energy >= 50:
+            self.sleep_quality = "普通"
+        else:
+            self.sleep_quality = "较差"
     
     def treat_sickness(self, medicine="普通药物"):
         """治疗宠物疾病"""
@@ -594,7 +646,44 @@ class VirtualPet:
             "size": self.size
         }
         
+        # 添加睡眠状态信息
+        if self.is_sleeping:
+            sleep_info = self.get_sleep_status()
+            status.update(sleep_info)
+        
         return status
+    
+    def get_sleep_status(self):
+        """获取睡眠状态信息"""
+        if not self.is_sleeping:
+            return {}
+        
+        # 计算已睡眠时长
+        sleep_duration = 0
+        if self.sleep_start_time:
+            sleep_duration = (time.time() - self.sleep_start_time) / 3600  # 转换为小时
+        
+        # 计算预计醒来时间
+        energy_needed = 100 - self.energy
+        hours_needed = energy_needed / 15.0  # 每小时恢复15点能量
+        hours_needed = max(0.1, hours_needed)  # 至少需要0.1小时
+        
+        # 根据性格调整
+        if PetPersonality.LAZY in self.personality_traits:
+            hours_needed *= 1.5
+        
+        estimated_wake_time = time.time() + (hours_needed * 3600)
+        wake_time_str = time.strftime("%H:%M", time.localtime(estimated_wake_time))
+        
+        # 计算睡眠进度
+        energy_progress = min(100, (self.energy / 100) * 100)
+        
+        return {
+            "sleep_duration": f"{sleep_duration:.1f}小时",
+            "estimated_wake_time": wake_time_str,
+            "sleep_progress": f"{energy_progress:.1f}%",
+            "sleep_quality_prediction": "预计良好" if hours_needed >= 0.5 else "预计普通"
+        }
     
     def get_needs_summary(self):
         """获取需求摘要（用于UI显示）"""
@@ -1269,6 +1358,7 @@ class LearningSystem:
 class ReinforcementLearningSystem:
     """强化学习系统 - 基于Q-learning的智能决策"""
     def __init__(self, pet, learning_rate=0.1, discount_factor=0.9, exploration_rate=1.0, exploration_decay=0.995, min_exploration=0.1):
+        # 实例变量初始化
         self.pet = pet
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor

@@ -33,7 +33,7 @@ class VirtualPetSimulator:
         if not os.path.exists(saved_pets_dir):
             os.makedirs(saved_pets_dir)
         
-        saved_pets = [f for f in os.listdir(saved_pets_dir) if f.endswith('.json') and f != 'pets.json']
+        saved_pets = [f for f in os.listdir(saved_pets_dir) if f.endswith('.json') and f != 'pets.json' and not f.endswith('_rl.json')]
         
         if saved_pets:
             print("发现已保存的宠物：")
@@ -47,10 +47,20 @@ class VirtualPetSimulator:
                 if 0 <= choice_idx < len(saved_pets):
                     # 加载已保存的宠物
                     pet_file = os.path.join(saved_pets_dir, saved_pets[choice_idx])
-                    loaded_pet = VirtualPet.load_from_file(pet_file)
                     
-                    # 询问是否升级为智能宠物
-                    if isinstance(loaded_pet, VirtualPet) and not isinstance(loaded_pet, IntelligentPet):
+                    # 检查是否存在强化学习数据文件，判断是否为智能宠物
+                    rl_file = pet_file.replace('.json', '_rl.json')
+                    is_intelligent = os.path.exists(rl_file)
+                    
+                    # 根据是否为智能宠物选择加载类
+                    if is_intelligent:
+                        loaded_pet = IntelligentPet.load_from_file(pet_file)
+                        self.pet = loaded_pet
+                        print(f"✨ 智能宠物 {loaded_pet.name} 已加载！")
+                    else:
+                        loaded_pet = VirtualPet.load_from_file(pet_file)
+                        
+                        # 询问是否升级为智能宠物
                         upgrade_choice = input("是否将此宠物升级为智能宠物？(y/n): ")
                         if upgrade_choice.lower() == 'y':
                             # 创建新的智能宠物并复制属性
@@ -86,8 +96,6 @@ class VirtualPetSimulator:
                             print(f"✨ 宠物 {loaded_pet.name} 已成功升级为智能宠物！")
                         else:
                             self.pet = loaded_pet
-                    else:
-                        self.pet = loaded_pet
                     
                     # 初始化物品栏并传入宠物实例
                     self.inventory = Inventory(pet=self.pet)
