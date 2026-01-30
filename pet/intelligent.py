@@ -136,6 +136,9 @@ class IntelligentPet(Pet):
         elif interaction_type == "change_color":
             new_color = kwargs.get("new_color", "白色")
             result = self.change_color(new_color)
+        elif interaction_type == "pet":
+            duration = kwargs.get("duration", 1)
+            result = self.pet(duration)
         else:
             result = "未知交互类型"
         
@@ -182,7 +185,8 @@ class IntelligentPet(Pet):
             "sleep": "sleep",
             "wake_up": "explore",  # 醒来后探索
             "clean": "clean",
-            "train": "train"
+            "train": "train",
+            "pet": "rest"  # 抚摸宠物映射为休息行为
         }
         return mapping.get(interaction_type)
     

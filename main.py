@@ -229,6 +229,21 @@ class VirtualPetSimulator:
                 print(result)
                 input("按回车键继续...")
         elif choice == "10":
+            # 抚摸宠物
+            if self.pet:
+                duration = input("请选择抚摸时间（1-5秒）: ")
+                try:
+                    duration = int(duration)
+                    duration = max(1, min(5, duration))
+                    if isinstance(self.pet, IntelligentPet):
+                        result = self.pet.interact_with_user("pet", duration=duration)
+                    else:
+                        result = self.pet.pet(duration=duration)
+                    print(result)
+                except ValueError:
+                    print("无效的输入！")
+                input("按回车键继续...")
+        elif choice == "11":
             # 更改宠物颜色
             if self.pet:
                 available_colors = self.pet.get_available_colors()
@@ -240,7 +255,7 @@ class VirtualPetSimulator:
                     result = self.pet.change_color(new_color)
                 print(result)
                 input("按回车键继续...")
-        elif choice == "11":
+        elif choice == "12":
             # 退出游戏
             self.running = False
             self.ui.display_goodbye()

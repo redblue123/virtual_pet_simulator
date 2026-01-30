@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-import os
+from utils.platform import PlatformUtils
 
 class UI:
     def __init__(self):
         self.ascii_art = {
-            "welcome": """        
+            "welcome": """
   /\_/\  
  ( o.o ) 
   > ^ <  
 欢迎来到虚拟宠物模拟器！
             """,
-            "happy": """        
+            "happy": """
    /\_/\  
   ( ^.^ ) 
    > ^ <  
             """,
-            "hungry": """        
+            "hungry": """
    /\_/\  
   ( o.o ) 
    > ~ <  
             """,
-            "sleeping": """        
+            "sleeping": """
    /\_/\  
   ( -.- ) 
    > o <  
             """,
-            "sick": """        
+            "sick": """
    /\_/\  
   ( x.x ) 
    > ~ <  
             """,
-            "goodbye": """        
+            "goodbye": """
   /\_/\  
  ( -.- ) 
   > ^ <  
@@ -40,7 +40,7 @@ class UI:
     
     def clear_screen(self):
         """清屏"""
-        os.system('cls' if os.name == 'nt' else 'clear')
+        PlatformUtils.clear_screen()
     
     def display_welcome(self):
         """显示欢迎界面"""
@@ -115,8 +115,9 @@ class UI:
         print("7. 保存宠物")
         print("8. 清洁宠物")
         print("9. 训练宠物")
-        print("10. 更改宠物颜色")
-        print("11. 退出游戏")
+        print("10. 抚摸宠物")
+        print("11. 更改宠物颜色")
+        print("12. 退出游戏")
         print("-" * 40)
     
     def display_goodbye(self):

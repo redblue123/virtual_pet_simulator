@@ -113,8 +113,8 @@ class MiniGames:
             # 短暂显示后清屏
             import time
             time.sleep(2)
-            import os
-            os.system('cls' if os.name == 'nt' else 'clear')
+            from utils.platform import PlatformUtils
+            PlatformUtils.clear_screen()
             
             # 玩家输入
             player_input = input("请输入你记住的序列（用空格分隔）: ")

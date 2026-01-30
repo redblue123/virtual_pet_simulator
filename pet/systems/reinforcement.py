@@ -43,33 +43,53 @@ class ReinforcementLearningSystem:
         
         # 可能的动作
         self.actions = PetConfig.RL_ACTIONS
+        
+        # 状态缓存 - 减少重复计算
+        self._state_cache = {}
+        self._last_status_time = 0
+        self._status_cache_timeout = 0.1  # 状态缓存超时时间（秒）
     
     def get_discrete_state(self):
         """获取离散状态"""
-        status = self.pet.get_status()
+        import time
+        current_time = time.time()
         
-        # 提取需要离散化的状态
-        state = {
-            "hunger": float(status["hunger"].split("/")[0]),
-            "energy": float(status["energy"].split("/")[0]),
-            "hygiene": float(status["hygiene"].split("/")[0]),
-            "happiness": float(status["happiness"].split("/")[0]),
-            "health": float(status["health"].split("/")[0])
-        }
-        
-        # 离散化状态
-        discrete_state = []
-        for key, value in state.items():
-            bins = self.state_bins[key]
-            for i, bin_threshold in enumerate(bins):
-                if value <= bin_threshold:
-                    discrete_state.append(i)
-                    break
-            else:
-                discrete_state.append(len(bins) - 1)
-        
-        # 转换为元组以便作为字典键
-        return tuple(discrete_state)
+        # 检查是否需要更新状态缓存
+        if current_time - self._last_status_time > self._status_cache_timeout:
+            status = self.pet.get_status()
+            
+            # 提取需要离散化的状态
+            state = {
+                "hunger": float(status["hunger"].split("/")[0]),
+                "energy": float(status["energy"].split("/")[0]),
+                "hygiene": float(status["hygiene"].split("/")[0]),
+                "happiness": float(status["happiness"].split("/")[0]),
+                "health": float(status["health"].split("/")[0])
+            }
+            
+            # 离散化状态
+            discrete_state = []
+            for key, value in state.items():
+                bins = self.state_bins[key]
+                for i, bin_threshold in enumerate(bins):
+                    if value <= bin_threshold:
+                        discrete_state.append(i)
+                        break
+                else:
+                    discrete_state.append(len(bins) - 1)
+            
+            # 转换为元组以便作为字典键
+            discrete_state_tuple = tuple(discrete_state)
+            
+            # 更新缓存
+            self._state_cache["discrete_state"] = discrete_state_tuple
+            self._state_cache["continuous_state"] = state
+            self._last_status_time = current_time
+            
+            return discrete_state_tuple
+        else:
+            # 使用缓存的状态
+            return self._state_cache.get("discrete_state", tuple([0] * len(self.state_bins)))
     
     def choose_action(self, state):
         """选择动作"""
@@ -78,8 +98,16 @@ class ReinforcementLearningSystem:
             return random.choice(self.actions)
         else:
             # 利用Q表选择最优动作
-            if state in self.q_table and self.q_table[state]:
-                return max(self.q_table[state], key=self.q_table[state].get)
+            state_q = self.q_table.get(state)
+            if state_q and state_q:
+                # 优化：预先计算最大Q值的动作
+                max_q = -float('inf')
+                best_action = None
+                for action, q_value in state_q.items():
+                    if q_value > max_q:
+                        max_q = q_value
+                        best_action = action
+                return best_action or random.choice(self.actions)
             else:
                 return random.choice(self.actions)
     
@@ -192,6 +220,10 @@ class ReinforcementLearningSystem:
         if len(self.replay_buffer) > self.max_replay_buffer_size:
             self.replay_buffer.pop(0)
             self.priorities.pop(0)
+        
+        # 优化：定期清理无效经验
+        if len(self.replay_buffer) % 100 == 0:
+            self._cleanup_invalid_experiences()
     
     def _calculate_priority(self, state, action, reward, next_state, done):
         """计算经验优先级"""
@@ -224,6 +256,26 @@ class ReinforcementLearningSystem:
         
         return priority
     
+    def _cleanup_invalid_experiences(self):
+        """清理无效经验"""
+        valid_experiences = []
+        valid_priorities = []
+        
+        for exp, priority in zip(self.replay_buffer, self.priorities):
+            state, action, reward, next_state, done = exp
+            # 检查经验是否有效
+            if (isinstance(state, (tuple, list)) and 
+                isinstance(action, str) and 
+                isinstance(reward, (int, float)) and 
+                isinstance(next_state, (tuple, list)) and 
+                isinstance(done, bool)):
+                valid_experiences.append(exp)
+                valid_priorities.append(priority)
+        
+        # 更新回放缓冲区和优先级
+        self.replay_buffer = valid_experiences
+        self.priorities = valid_priorities
+    
     def _prioritized_sample(self):
         """优先级采样"""
         # 确保 priorities 和 replay_buffer 长度相同
@@ -233,9 +285,21 @@ class ReinforcementLearningSystem:
         if min_length < len(self.replay_buffer):
             self.replay_buffer = self.replay_buffer[:min_length]
         
+        # 确保有足够的经验可采样
+        if min_length < self.batch_size:
+            # 经验不足时，返回所有经验
+            samples = self.replay_buffer[:min_length]
+            indices = list(range(min_length))
+            weights = [1.0] * min_length
+            return samples, indices, weights
+        
         # 计算采样概率
         total_priority = sum(self.priorities)
-        probabilities = [p / total_priority for p in self.priorities]
+        if total_priority == 0:
+            # 所有优先级为0时，均匀采样
+            probabilities = [1.0 / len(self.priorities)] * len(self.priorities)
+        else:
+            probabilities = [p / total_priority for p in self.priorities]
         
         # 采样
         indices = random.choices(range(len(self.replay_buffer)), weights=probabilities, k=self.batch_size)
@@ -249,8 +313,9 @@ class ReinforcementLearningSystem:
             weights.append(weight)
         
         # 归一化权重
-        max_weight = max(weights)
-        weights = [w / max_weight for w in weights]
+        if weights:
+            max_weight = max(weights)
+            weights = [w / max_weight for w in weights]
         
         return samples, indices, weights
     

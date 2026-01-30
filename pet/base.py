@@ -175,6 +175,76 @@ class Pet:
         # 应用快乐度变化
         self.happiness = max(0, min(100, self.happiness + happiness_change))
     
+    def pet(self, duration=1):
+        """抚摸宠物
+        
+        Args:
+            duration (int): 抚摸的持续时间（秒）
+        
+        Returns:
+            str: 抚摸结果的描述
+        
+        Notes:
+            - 增加宠物的安全感和与主人的关系
+            - 触发相应的情感反应
+            - 根据宠物性格调整反应
+        """
+        if self.is_sleeping:
+            return f"{self.name}正在睡觉，不要打扰它！"
+        
+        # 基础效果
+        relationship_increase = 2.0 * duration
+        happiness_increase = 3.0 * duration
+        
+        # 根据宠物性格调整效果
+        personality_bonus = 1.0
+        if PetPersonality.LAZY in self.personality_traits:
+            personality_bonus = 1.5  # 懒惰的宠物更喜欢被抚摸
+        elif PetPersonality.PLAYFUL in self.personality_traits:
+            personality_bonus = 0.8  # 顽皮的宠物可能不太喜欢安静的抚摸
+        
+        # 应用效果
+        self.relationship_with_owner = min(100, self.relationship_with_owner + relationship_increase * personality_bonus)
+        self.happiness = min(100, self.happiness + happiness_increase * personality_bonus)
+        
+        # 触发情感反应
+        self.emotional_system.trigger_emotion(EmotionType.CALM, 0.3 * duration, "被主人抚摸")
+        self.emotional_system.trigger_emotion(EmotionType.LOVE, 0.2 * duration, "被主人抚摸")
+        
+        # 添加记忆
+        memory = {
+            "type": "positive",
+            "content": "被主人抚摸",
+            "timestamp": time.time(),
+            "intensity": 0.5 * duration
+        }
+        self.memories.append(memory)
+        if len(self.memories) > self.max_memory_length:
+            self.memories.pop(0)
+        
+        # 随机反应
+        reactions = [
+            f"{self.name}享受地眯起了眼睛，发出了满足的声音！",
+            f"{self.name}用头蹭了蹭你的手，表示它很喜欢你的抚摸！",
+            f"{self.name}蜷缩在你的怀里，看起来非常安心。",
+            f"{self.name}摇了摇尾巴，对你的抚摸表示感谢！",
+            f"{self.name}趴在地上，露出肚子让你继续抚摸！"
+        ]
+        
+        # 根据性格调整反应概率
+        if PetPersonality.INDEPENDENT in self.personality_traits:
+            reactions.extend([
+                f"{self.name}有点害羞地低下了头，但还是接受了你的抚摸。",
+                f"{self.name}悄悄地靠近你，似乎很享受你的抚摸。"
+            ])
+        
+        reaction = random.choice(reactions)
+        
+        # 标记需要更新
+        self.needs_update = True
+        
+        return reaction
+    
     def _update_age(self, hours_passed):
         """更新年龄
         
