@@ -117,7 +117,9 @@ class UI:
         print("9. 训练宠物")
         print("10. 抚摸宠物")
         print("11. 更改宠物颜色")
-        print("12. 退出游戏")
+        print("12. 环境互动")
+        print("13. 社交系统")
+        print("14. 退出游戏")
         print("-" * 40)
     
     def display_goodbye(self):

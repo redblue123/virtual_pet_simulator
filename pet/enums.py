@@ -40,3 +40,6 @@ class EmotionType(Enum):
     SADNESS = "悲伤"
     LOVE = "喜爱"
     CURIOSITY = "好奇"
+    GRATITUDE = "感激"
+    PRIDE = "自豪"
+    ENVY = "嫉妒"
