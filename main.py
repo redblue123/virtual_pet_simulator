@@ -2,7 +2,7 @@
 import time
 import sys
 import os
-from pet import VirtualPet, IntelligentPet
+from pet import Pet as VirtualPet, IntelligentPet
 from ui import UI
 from inventory import Inventory
 from minigames import MiniGames
@@ -194,10 +194,28 @@ class VirtualPetSimulator:
         elif choice == "8":
             # 清洁宠物
             if self.pet:
+                # 显示清洁类型选择菜单
+                print("\n请选择清洁类型：")
+                print("1. 毛发清理")
+                print("2. 刷牙")
+                print("3. 洗澡")
+                print("4. 修剪指甲")
+                clean_choice = input("请选择（1-4）: ")
+                
+                # 映射选择到清洁类型
+                clean_types = {
+                    "1": "毛发清理",
+                    "2": "刷牙",
+                    "3": "洗澡",
+                    "4": "修剪指甲"
+                }
+                
+                clean_type = clean_types.get(clean_choice, "毛发清理")
+                
                 if isinstance(self.pet, IntelligentPet):
-                    result = self.pet.interact_with_user("clean")
+                    result = self.pet.interact_with_user("clean", clean_type=clean_type)
                 else:
-                    result = self.pet.clean()
+                    result = self.pet.clean(clean_type)
                 print(result)
                 input("按回车键继续...")
         elif choice == "9":

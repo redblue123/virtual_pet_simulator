@@ -81,6 +81,10 @@ class Inventory:
             elif item["name"] == "枕头":
                 self.pet.energy = min(100, self.pet.energy + 40)
                 print("宠物的精力值增加了！")
+                # 检查宠物是否在睡眠中且能量值达到100%，如果是则唤醒宠物
+                if self.pet.is_sleeping and self.pet.energy >= 100:
+                    self.pet.wake_up()
+                    print("宠物因为精力充沛而醒来了！")
         else:
             print("没有宠物可以使用物品！")
         

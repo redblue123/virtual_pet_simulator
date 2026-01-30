@@ -37,6 +37,254 @@ class PetPersonality(Enum):
     INDEPENDENT = "独立" # 喜欢独处
     CURIOUS = "好奇"     # 喜欢探索
 
+class EmotionType(Enum):
+    """情感类型枚举"""
+    JOY = "愉悦"
+    EXCITEMENT = "兴奋"
+    CALM = "平静"
+    ANXIETY = "焦虑"
+    FEAR = "恐惧"
+    ANGER = "愤怒"
+    SADNESS = "悲伤"
+    LOVE = "喜爱"
+    CURIOSITY = "好奇"
+
+class EmotionEvent:
+    """情感事件"""
+    def __init__(self, emotion_type, intensity, trigger, timestamp=None):
+        self.emotion_type = emotion_type
+        self.intensity = intensity  # 0.0-1.0
+        self.trigger = trigger      # 触发原因
+        self.timestamp = timestamp or datetime.now()
+    
+    def to_dict(self):
+        return {
+            "emotion_type": self.emotion_type.value,
+            "intensity": self.intensity,
+            "trigger": self.trigger,
+            "timestamp": self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        emotion_type = EmotionType(data["emotion_type"])
+        intensity = data["intensity"]
+        trigger = data["trigger"]
+        timestamp = datetime.strptime(data["timestamp"], "%Y-%m-%d %H:%M:%S")
+        return cls(emotion_type, intensity, trigger, timestamp)
+
+class EmotionalSystem:
+    """情感系统"""
+    def __init__(self, pet):
+        self.pet = pet
+        
+        # 情感维度（0.0-1.0）
+        self.emotions = {
+            EmotionType.JOY: 0.5,
+            EmotionType.EXCITEMENT: 0.3,
+            EmotionType.CALM: 0.6,
+            EmotionType.ANXIETY: 0.1,
+            EmotionType.FEAR: 0.1,
+            EmotionType.ANGER: 0.1,
+            EmotionType.SADNESS: 0.1,
+            EmotionType.LOVE: 0.5,
+            EmotionType.CURIOSITY: 0.4
+        }
+        
+        # 情感历史
+        self.emotion_history = []
+        self.max_history_length = 100
+        
+        # 情感触发记忆
+        self.emotion_triggers = defaultdict(list)
+        
+        # 情感衰减率（每小时）
+        self.decay_rates = {
+            EmotionType.JOY: 0.05,
+            EmotionType.EXCITEMENT: 0.1,
+            EmotionType.CALM: 0.02,
+            EmotionType.ANXIETY: 0.08,
+            EmotionType.FEAR: 0.15,
+            EmotionType.ANGER: 0.1,
+            EmotionType.SADNESS: 0.06,
+            EmotionType.LOVE: 0.03,
+            EmotionType.CURIOSITY: 0.07
+        }
+        
+        # 情感传染系数
+        self.contagion_coefficient = 0.3
+        
+        # 情感阈值
+        self.emotion_thresholds = {
+            "high": 0.7,
+            "medium": 0.4,
+            "low": 0.2
+        }
+        
+        print("💖 情感系统已初始化！")
+    
+    def trigger_emotion(self, emotion_type, intensity, trigger):
+        """触发情感"""
+        # 限制强度范围
+        intensity = max(0.0, min(1.0, intensity))
+        
+        # 更新情感强度
+        old_intensity = self.emotions[emotion_type]
+        self.emotions[emotion_type] = min(1.0, self.emotions[emotion_type] + intensity)
+        
+        # 记录情感事件
+        event = EmotionEvent(emotion_type, intensity, trigger)
+        self.emotion_history.append(event)
+        
+        # 记录情感触发
+        self.emotion_triggers[emotion_type].append(trigger)
+        
+        # 限制历史长度
+        if len(self.emotion_history) > self.max_history_length:
+            self.emotion_history.pop(0)
+        
+        # 情感传染：影响其他情感
+        self._apply_emotion_contagion(emotion_type, intensity)
+        
+        # 更新宠物心情
+        self._update_mood_from_emotions()
+        
+        return self.emotions[emotion_type] - old_intensity
+    
+    def _apply_emotion_contagion(self, emotion_type, intensity):
+        """应用情感传染"""
+        # 定义情感传染规则
+        contagion_rules = {
+            EmotionType.JOY: {EmotionType.EXCITEMENT: 0.5, EmotionType.LOVE: 0.3},
+            EmotionType.EXCITEMENT: {EmotionType.JOY: 0.4, EmotionType.CURIOSITY: 0.3},
+            EmotionType.ANXIETY: {EmotionType.FEAR: 0.6, EmotionType.ANGER: 0.4},
+            EmotionType.FEAR: {EmotionType.ANXIETY: 0.7, EmotionType.SADNESS: 0.3},
+            EmotionType.ANGER: {EmotionType.ANXIETY: 0.5, EmotionType.FEAR: 0.2},
+            EmotionType.SADNESS: {EmotionType.ANXIETY: 0.4, EmotionType.FEAR: 0.2},
+            EmotionType.LOVE: {EmotionType.JOY: 0.6, EmotionType.CALM: 0.4},
+            EmotionType.CURIOSITY: {EmotionType.EXCITEMENT: 0.5, EmotionType.JOY: 0.3}
+        }
+        
+        if emotion_type in contagion_rules:
+            for target_emotion, contagion_factor in contagion_rules[emotion_type].items():
+                contagion_amount = intensity * self.contagion_coefficient * contagion_factor
+                self.emotions[target_emotion] = min(1.0, self.emotions[target_emotion] + contagion_amount)
+    
+    def _update_mood_from_emotions(self):
+        """根据情感更新心情"""
+        # 计算积极情感和消极情感的平衡
+        positive_emotions = [
+            self.emotions[EmotionType.JOY],
+            self.emotions[EmotionType.EXCITEMENT],
+            self.emotions[EmotionType.CALM],
+            self.emotions[EmotionType.LOVE],
+            self.emotions[EmotionType.CURIOSITY]
+        ]
+        
+        negative_emotions = [
+            self.emotions[EmotionType.ANXIETY],
+            self.emotions[EmotionType.FEAR],
+            self.emotions[EmotionType.ANGER],
+            self.emotions[EmotionType.SADNESS]
+        ]
+        
+        positive_score = sum(positive_emotions) / len(positive_emotions)
+        negative_score = sum(negative_emotions) / len(negative_emotions)
+        
+        # 根据情感平衡确定心情
+        mood_score = positive_score - negative_score
+        
+        if mood_score >= 0.6:
+            self.pet.mood = PetMood.ECSTATIC
+        elif mood_score >= 0.3:
+            self.pet.mood = PetMood.HAPPY
+        elif mood_score >= 0.1:
+            self.pet.mood = PetMood.CONTENT
+        elif mood_score >= -0.1:
+            self.pet.mood = PetMood.NEUTRAL
+        elif mood_score >= -0.3:
+            self.pet.mood = PetMood.SAD
+        elif mood_score >= -0.6:
+            self.pet.mood = PetMood.DEPRESSED
+        else:
+            self.pet.mood = PetMood.ANGRY
+    
+    def update_emotions(self, hours_passed):
+        """更新情感（随时间衰减）"""
+        for emotion_type, decay_rate in self.decay_rates.items():
+            # 情感衰减
+            decay_amount = decay_rate * hours_passed
+            self.emotions[emotion_type] = max(0.1, self.emotions[emotion_type] - decay_amount)
+        
+        # 更新心情
+        self._update_mood_from_emotions()
+    
+    def get_dominant_emotion(self):
+        """获取主导情感"""
+        return max(self.emotions, key=self.emotions.get)
+    
+    def get_emotion_state(self):
+        """获取情感状态"""
+        dominant = self.get_dominant_emotion()
+        return {
+            "dominant_emotion": dominant.value,
+            "dominant_intensity": self.emotions[dominant],
+            "all_emotions": {e.value: intensity for e, intensity in self.emotions.items()},
+            "mood": self.pet.mood.value
+        }
+    
+    def get_emotional_influence(self):
+        """获取情感对行为的影响"""
+        influence = {}
+        
+        # 愉悦增加快乐度
+        influence["happiness_bonus"] = (self.emotions[EmotionType.JOY] * 20)
+        
+        # 焦虑降低快乐度
+        influence["happiness_penalty"] = (self.emotions[EmotionType.ANXIETY] * 15)
+        
+        # 兴奋增加能量消耗
+        influence["energy_bonus"] = (self.emotions[EmotionType.EXCITEMENT] * 10)
+        
+        # 平静降低能量消耗
+        influence["energy_saving"] = (self.emotions[EmotionType.CALM] * 5)
+        
+        # 愤怒增加饥饿
+        influence["hunger_increase"] = (self.emotions[EmotionType.ANGER] * 5)
+        
+        # 好奇增加探索欲望
+        influence["exploration_desire"] = (self.emotions[EmotionType.CURIOSITY] * 15)
+        
+        return influence
+    
+    def save_emotional_data(self):
+        """保存情感数据"""
+        return {
+            "emotions": {e.value: intensity for e, intensity in self.emotions.items()},
+            "emotion_history": [event.to_dict() for event in self.emotion_history],
+            "emotion_triggers": {e.value: triggers for e, triggers in self.emotion_triggers.items()}
+        }
+    
+    def load_emotional_data(self, data):
+        """加载情感数据"""
+        # 恢复情感
+        self.emotions = {}
+        for emotion_str, intensity in data.get("emotions", {}).items():
+            emotion_type = EmotionType(emotion_str)
+            self.emotions[emotion_type] = intensity
+        
+        # 恢复情感历史
+        self.emotion_history = []
+        for event_data in data.get("emotion_history", []):
+            event = EmotionEvent.from_dict(event_data)
+            self.emotion_history.append(event)
+        
+        # 恢复情感触发
+        self.emotion_triggers = defaultdict(list)
+        for emotion_str, triggers in data.get("emotion_triggers", {}).items():
+            emotion_type = EmotionType(emotion_str)
+            self.emotion_triggers[emotion_type] = triggers
+
 class VirtualPet:
     def __init__(self, name="未命名", species="未知"):
         # 基础信息
@@ -93,6 +341,9 @@ class VirtualPet:
         self.sleep_start_time = None  # 睡眠开始时间
         self.sleep_duration = 0  # 睡眠时长（小时）
         self.sleep_quality = "普通"  # 睡眠质量
+        
+        # 情感系统
+        self.emotional_system = EmotionalSystem(self)
         
         print(f"✨ 新宠物 {name} 诞生了！")
     
@@ -165,7 +416,7 @@ class VirtualPet:
             self.energy = min(100, self.energy + energy_rate * hours_passed)
             
             # 当能量达到100%时自动醒来
-            if self.energy >= 100 and old_energy < 100:
+            if self.energy >= 100:
                 self.wake_up()
         else:
             # 活跃时消耗能量
@@ -201,7 +452,25 @@ class VirtualPet:
             # 精力充沛的顽皮宠物更快乐
             happiness_change += 0.1 * hours_passed
         
+        # 情感系统影响
+        emotional_influence = self.emotional_system.get_emotional_influence()
+        happiness_change += emotional_influence["happiness_bonus"] * hours_passed
+        happiness_change -= emotional_influence["happiness_penalty"] * hours_passed
+        
+        # 能量受情感影响（睡眠时不应用，因为睡眠时能量恢复是主要机制）
+        if not self.is_sleeping:
+            self.energy += emotional_influence["energy_bonus"] * hours_passed
+            self.energy += emotional_influence["energy_saving"] * hours_passed
+            self.energy = min(100, self.energy)
+        
+        # 饥饿受情感影响
+        self.hunger += emotional_influence["hunger_increase"] * hours_passed
+        self.hunger = min(100, self.hunger)
+        
         self.happiness = max(0, min(100, self.happiness + happiness_change))
+        
+        # 更新情感系统
+        self.emotional_system.update_emotions(hours_passed)
     
     def _update_age(self):
         """更新年龄和生命周期阶段"""
@@ -234,47 +503,10 @@ class VirtualPet:
         self.size = size_map.get(self.state, "中等")
     
     def _update_mood(self):
-        """根据状态计算当前心情"""
-        mood_score = 0
-        
-        # 健康影响
-        mood_score += self.health / 2
-        
-        # 快乐度影响
-        mood_score += self.happiness
-        
-        # 饥饿影响
-        if self.hunger > 80:
-            mood_score -= 30
-        elif self.hunger > 50:
-            mood_score -= 15
-        
-        # 清洁度影响
-        if self.hygiene < 20:
-            mood_score -= 20
-        
-        # 能量影响
-        if self.energy < 10:
-            mood_score -= 25
-        
-        # 关系影响
-        mood_score += self.relationship_with_owner * 0.5
-        
-        # 确定心情等级
-        if mood_score >= 180:
-            self.mood = PetMood.ECSTATIC
-        elif mood_score >= 150:
-            self.mood = PetMood.HAPPY
-        elif mood_score >= 120:
-            self.mood = PetMood.CONTENT
-        elif mood_score >= 80:
-            self.mood = PetMood.NEUTRAL
-        elif mood_score >= 50:
-            self.mood = PetMood.SAD
-        elif mood_score >= 20:
-            self.mood = PetMood.DEPRESSED
-        else:
-            self.mood = PetMood.ANGRY
+        """根据状态计算当前心情（现在由情感系统主导）"""
+        # 情感系统已经通过 update_emotions 更新了心情
+        # 这里只做基础的状态检查，确保心情不会过于极端
+        pass
     
     def _check_health(self):
         """检查健康状态"""
@@ -373,8 +605,13 @@ class VirtualPet:
     
     def feed(self, food_type="普通食物"):
         """喂食宠物"""
-        if self.is_sleeping:
-            return "宠物正在睡觉，无法喂食"
+        # 检查宠物是否在睡觉
+        was_sleeping = self.is_sleeping
+        wake_result = ""
+        
+        if was_sleeping:
+            # 唤醒宠物
+            wake_result = self.wake_up()
         
         food_effects = {
             "普通食物": {"hunger": -30, "happiness": 5, "weight": 0.1},
@@ -395,12 +632,33 @@ class VirtualPet:
         if PetPersonality.HUNGRY in self.personality_traits:
             self.happiness += 5
         
+        # 触发情感
+        self.emotional_system.trigger_emotion(EmotionType.JOY, 0.3, f"吃了{food_type}")
+        if PetPersonality.HUNGRY in self.personality_traits:
+            self.emotional_system.trigger_emotion(EmotionType.LOVE, 0.2, "主人喂食")
+        
         self._add_memory(f"吃了{self.name}一份{food_type}")
         
         # 记录喂食偏好
         self.routine_preferences["feed"] += 1
         
-        return f"喂食成功！{self.name}看起来很开心"
+        # 检查是否需要继续睡觉
+        continue_sleep_result = ""
+        if was_sleeping:
+            # 如果之前在睡觉，吃完饭再继续睡觉
+            continue_sleep_result = self.sleep()
+        else:
+            # 检查精力值，如果小于50%，则去睡觉
+            continue_sleep_result = self._check_energy_and_sleep()
+        
+        # 构建返回消息
+        result_message = f"喂食成功！{self.name}看起来很开心"
+        if wake_result:
+            result_message = f"{wake_result}\n{result_message}"
+        if continue_sleep_result:
+            result_message = f"{result_message}\n{continue_sleep_result}"
+        
+        return result_message
     
     def play(self, game_type="普通游戏"):
         """和宠物玩耍"""
@@ -436,36 +694,114 @@ class VirtualPet:
         if PetPersonality.LAZY in self.personality_traits:
             self.energy -= 5
         
+        # 触发情感
+        self.emotional_system.trigger_emotion(EmotionType.EXCITEMENT, 0.4, f"玩了{game_type}")
+        self.emotional_system.trigger_emotion(EmotionType.JOY, 0.3, "玩耍")
+        if PetPersonality.PLAYFUL in self.personality_traits:
+            self.emotional_system.trigger_emotion(EmotionType.CURIOSITY, 0.2, "想继续玩")
+        
         self._add_memory(f"玩了{game_type}游戏")
         
         # 记录游戏偏好
         self.routine_preferences["play"] += 1
         
+        # 检查精力值，如果小于50%，则去睡觉
+        sleep_result = self._check_energy_and_sleep()
+        if sleep_result:
+            return f"玩耍成功！{self.name}玩得很开心\n{sleep_result}"
+        
         return f"玩耍成功！{self.name}玩得很开心"
     
-    def clean(self):
-        """清洁宠物"""
+    def clean(self, clean_type="毛发清理"):
+        """清洁宠物
+        
+        Args:
+            clean_type: 清洁类型，可选值："毛发清理", "刷牙", "洗澡", "修剪指甲"
+        """
         if self.is_sleeping:
             return "宠物正在睡觉，无法清洁"
         
-        hygiene_gain = 50
+        # 不同清洁类型的效果
+        clean_effects = {
+            "毛发清理": {
+                "hygiene_gain": 40,
+                "happiness_gain": 10,
+                "health_gain": 5,
+                "emotion": EmotionType.CALM,
+                "emotion_intensity": 0.3,
+                "description": "清理毛发",
+                "memory": "被清理了毛发"
+            },
+            "刷牙": {
+                "hygiene_gain": 20,
+                "happiness_gain": 5,
+                "health_gain": 15,
+                "emotion": EmotionType.ANXIETY,
+                "emotion_intensity": 0.2,
+                "description": "刷牙",
+                "memory": "被刷了牙"
+            },
+            "洗澡": {
+                "hygiene_gain": 60,
+                "happiness_gain": 15,
+                "health_gain": 10,
+                "emotion": EmotionType.EXCITEMENT,
+                "emotion_intensity": 0.4,
+                "description": "洗澡",
+                "memory": "被洗了澡"
+            },
+            "修剪指甲": {
+                "hygiene_gain": 15,
+                "happiness_gain": 5,
+                "health_gain": 5,
+                "emotion": EmotionType.ANXIETY,
+                "emotion_intensity": 0.3,
+                "description": "修剪指甲",
+                "memory": "被修剪了指甲"
+            }
+        }
+        
+        # 获取当前清洁类型的效果
+        effect = clean_effects.get(clean_type, clean_effects["毛发清理"])
+        
+        # 应用效果
+        hygiene_gain = effect["hygiene_gain"]
+        happiness_gain = effect["happiness_gain"]
+        health_gain = effect["health_gain"]
         
         # 爱干净性格更享受清洁
         if PetPersonality.CLEAN in self.personality_traits:
-            hygiene_gain = 70
-            self.happiness += 20
-        else:
-            self.happiness += 5
+            hygiene_gain *= 1.3
+            happiness_gain *= 1.5
         
+        # 应用清洁效果
         self.hygiene = min(100, self.hygiene + hygiene_gain)
+        self.happiness = min(100, self.happiness + happiness_gain)
+        self.health = min(100, self.health + health_gain)
         
-        # 清洁有助于健康
-        if self.is_sick and self.sickness_type == "皮肤病":
-            self.health += 10
+        # 触发情感
+        self.emotional_system.trigger_emotion(effect["emotion"], effect["emotion_intensity"], effect["description"])
         
-        self._add_memory("被清洁了")
+        # 爱干净性格额外触发快乐情感
+        if PetPersonality.CLEAN in self.personality_traits:
+            self.emotional_system.trigger_emotion(EmotionType.JOY, 0.4, "享受清洁")
         
-        return f"清洁成功！{self.name}现在很干净"
+        # 添加记忆
+        self._add_memory(effect["memory"])
+        
+        # 生成清洁结果消息
+        result_message = ""
+        if PetPersonality.CLEAN in self.personality_traits:
+            result_message = f"{clean_type}成功！{self.name}享受了这次清洁，现在看起来很整洁"
+        else:
+            result_message = f"{clean_type}成功！{self.name}现在干净多了"
+        
+        # 检查精力值，如果小于50%，则去睡觉
+        sleep_result = self._check_energy_and_sleep()
+        if sleep_result:
+            return f"{result_message}\n{sleep_result}"
+        
+        return result_message
     
     def sleep(self):
         """让宠物睡觉"""
@@ -479,7 +815,10 @@ class VirtualPet:
         # 根据性格调整睡眠行为
         sleep_message = f"{self.name}开始睡觉了，晚安！"
         if PetPersonality.LAZY in self.personality_traits:
-            sleep_message += " (懒惰的{self.name}可能会睡很久哦)"
+            sleep_message += f" (懒惰的{self.name}可能会睡很久哦)"
+        
+        # 触发情感
+        self.emotional_system.trigger_emotion(EmotionType.CALM, 0.5, "开始睡觉")
         
         self._add_memory("去睡觉了")
         return sleep_message
@@ -515,6 +854,14 @@ class VirtualPet:
             wake_message += f" (睡眠质量良好，{self.name}感觉不错)"
         
         self.happiness = min(100, self.happiness + happiness_bonus)
+        
+        # 触发情感
+        if self.sleep_quality == "优秀":
+            self.emotional_system.trigger_emotion(EmotionType.JOY, 0.4, "睡得很好")
+        elif self.sleep_quality == "良好":
+            self.emotional_system.trigger_emotion(EmotionType.JOY, 0.2, "睡得不错")
+        elif self.sleep_quality == "较差":
+            self.emotional_system.trigger_emotion(EmotionType.ANXIETY, 0.2, "没睡好")
         
         # 重置睡眠相关属性
         self.sleep_start_time = None
@@ -555,8 +902,13 @@ class VirtualPet:
         if random.random() < effect["recovery_chance"]:
             self._recover_from_sickness()
             result = f"治疗成功！{self.name}从{self.sickness_type}中恢复了"
+            # 触发积极情感
+            self.emotional_system.trigger_emotion(EmotionType.JOY, 0.3, "疾病恢复")
+            self.emotional_system.trigger_emotion(EmotionType.LOVE, 0.4, "主人照顾")
         else:
             result = f"治疗有些效果，但{self.name}还需要休息"
+            # 触发焦虑情感
+            self.emotional_system.trigger_emotion(EmotionType.ANXIETY, 0.2, "治疗效果不佳")
         
         self._add_memory("接受了治疗")
         return result
@@ -586,6 +938,11 @@ class VirtualPet:
         self.experience += 15
         self.happiness += 5
         
+        # 触发情感
+        self.emotional_system.trigger_emotion(EmotionType.CURIOSITY, 0.3, "学习新技能")
+        if PetPersonality.LAZY in self.personality_traits:
+            self.emotional_system.trigger_emotion(EmotionType.ANXIETY, 0.2, "不想训练")
+        
         skill_names = {
             "intelligence": "智力",
             "strength": "力量",
@@ -594,6 +951,11 @@ class VirtualPet:
         }
         
         self._add_memory(f"进行了{skill_names[skill_type]}训练")
+        
+        # 检查精力值，如果小于50%，则去睡觉
+        sleep_result = self._check_energy_and_sleep()
+        if sleep_result:
+            return f"训练成功！{self.name}的{skill_names[skill_type]}提升了\n{sleep_result}"
         
         return f"训练成功！{self.name}的{skill_names[skill_type]}提升了"
     
@@ -743,7 +1105,8 @@ class VirtualPet:
             "sickness_type": self.sickness_type,
             "last_update_time": self.last_update_time,
             "accessories": self.accessories,
-            "needs_update": self.needs_update
+            "needs_update": self.needs_update,
+            "emotional_system": self.emotional_system.save_emotional_data()
         }
         
         with open(filename, 'w', encoding='utf-8') as f:
@@ -805,6 +1168,10 @@ class VirtualPet:
         # 恢复时间
         pet.last_update_time = data["last_update_time"]
         pet.needs_update = data.get("needs_update", True)
+        
+        # 恢复情感系统
+        if "emotional_system" in data:
+            pet.emotional_system.load_emotional_data(data["emotional_system"])
         
         # 加载强化学习数据（如果有）
         if hasattr(pet, 'reinforcement_learning'):
@@ -924,7 +1291,18 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
         self.happiness = min(100, self.happiness + happiness_gain)
         self.skills["intelligence"] += intelligence_gain
         
+        # 检查精力值，如果小于50%，则去睡觉
+        sleep_result = self._check_energy_and_sleep()
+        if sleep_result:
+            return f"{self.name}正在好奇地探索周围环境\n{sleep_result}"
+        
         return f"{self.name}正在好奇地探索周围环境"
+    
+    def _check_energy_and_sleep(self):
+        """检查精力值，如果小于50%，则去睡觉"""
+        if not self.is_sleeping and self.energy < 50:
+            return self.sleep()
+        return ""
     
     def _rest(self):
         """休息恢复"""
@@ -933,6 +1311,11 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
         
         self.energy = min(100, self.energy + energy_gain)
         self.health = min(100, self.health + health_gain)
+        
+        # 检查精力值，如果小于50%，则去睡觉
+        sleep_result = self._check_energy_and_sleep()
+        if sleep_result:
+            return f"{self.name}正在休息恢复精力\n{sleep_result}"
         
         return f"{self.name}正在休息恢复精力"
     
@@ -950,7 +1333,8 @@ class IntelligentPet(VirtualPet): # 核心功能：让宠物能够自发行为�
         elif interaction_type == "wake_up":
             result = self.wake_up()
         elif interaction_type == "clean":
-            result = self.clean()
+            clean_type = kwargs.get("clean_type", "毛发清理")
+            result = self.clean(clean_type)
         elif interaction_type == "train":
             skill_type = kwargs.get("skill_type", "intelligence")
             result = self.train(skill_type)
@@ -1356,9 +1740,8 @@ class LearningSystem:
 
 
 class ReinforcementLearningSystem:
-    """强化学习系统 - 基于Q-learning的智能决策"""
+    """强化学习系统 - 基于改进Q-learning的智能决策"""
     def __init__(self, pet, learning_rate=0.1, discount_factor=0.9, exploration_rate=1.0, exploration_decay=0.995, min_exploration=0.1):
-        # 实例变量初始化
         self.pet = pet
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
@@ -1366,20 +1749,23 @@ class ReinforcementLearningSystem:
         self.exploration_decay = exploration_decay
         self.min_exploration = min_exploration
         
-        # Q-table 存储
-        self.q_table = defaultdict(lambda: defaultdict(float))
+        # Q-table 存储（双Q学习）
+        self.q_table_1 = defaultdict(lambda: defaultdict(float))
+        self.q_table_2 = defaultdict(lambda: defaultdict(float))
         
-        # 经验回放缓存
+        # 优先经验回放
         self.replay_buffer = []
-        self.buffer_size = 1000
+        self.buffer_size = 2000
+        self.priorities = []
         
-        # 状态离散化参数
+        # 状态离散化参数（更精细的划分）
         self.state_bins = {
-            "health": [0, 30, 60, 100],
-            "hunger": [0, 30, 60, 100],
-            "energy": [0, 30, 60, 100],
-            "hygiene": [0, 30, 60, 100],
-            "happiness": [0, 30, 60, 100]
+            "health": [0, 20, 40, 60, 80, 100],
+            "hunger": [0, 20, 40, 60, 80, 100],
+            "energy": [0, 20, 40, 60, 80, 100],
+            "hygiene": [0, 20, 40, 60, 80, 100],
+            "happiness": [0, 20, 40, 60, 80, 100],
+            "age": [0, 10, 30, 90, 365]
         }
         
         # 动作空间
@@ -1389,23 +1775,87 @@ class ReinforcementLearningSystem:
         self.learning_steps = 0
         self.total_reward = 0
         self.average_reward = 0
+        self.episode_rewards = []
+        
+        # 内在动机系统
+        self.visitation_counts = defaultdict(int)
+        self.curiosity_bonus = 0.1
+        
+        # 目标权重系统
+        self.goal_weights = {
+            "health": 1.0,
+            "hunger": 1.0,
+            "energy": 0.8,
+            "hygiene": 0.6,
+            "happiness": 1.2,
+            "growth": 0.5
+        }
+        
+        # 历史状态记录
+        self.state_history = []
+        self.action_history = []
+        self.history_length = 5
         
         print("🧠 强化学习系统已初始化！")
     
     def get_discrete_state(self):
-        """获取离散化的状态"""
+        """获取离散化的状态（包含历史信息）"""
         state = {
             "health": self._discretize_value(self.pet.health, self.state_bins["health"]),
             "hunger": self._discretize_value(self.pet.hunger, self.state_bins["hunger"]),
             "energy": self._discretize_value(self.pet.energy, self.state_bins["energy"]),
             "hygiene": self._discretize_value(self.pet.hygiene, self.state_bins["hygiene"]),
             "happiness": self._discretize_value(self.pet.happiness, self.state_bins["happiness"]),
+            "age": self._discretize_value(self.pet.age_in_days, self.state_bins["age"]),
             "is_sleeping": int(self.pet.is_sleeping),
-            "is_sick": int(self.pet.is_sick)
+            "is_sick": int(self.pet.is_sick),
+            "mood": self._get_mood_value()
         }
         
-        # 转换为元组以便作为字典键
+        # 添加历史趋势信息
+        if len(self.state_history) > 0:
+            state["health_trend"] = self._get_trend(self.pet.health, "health")
+            state["hunger_trend"] = self._get_trend(self.pet.hunger, "hunger")
+            state["energy_trend"] = self._get_trend(self.pet.energy, "energy")
+        else:
+            state["health_trend"] = 0
+            state["hunger_trend"] = 0
+            state["energy_trend"] = 0
+        
+        # 更新历史
+        self.state_history.append(state.copy())
+        if len(self.state_history) > self.history_length:
+            self.state_history.pop(0)
+        
         return tuple(sorted(state.items()))
+    
+    def _get_mood_value(self):
+        """将心情转换为数值"""
+        mood_values = {
+            "狂喜": 6,
+            "快乐": 5,
+            "满足": 4,
+            "一般": 3,
+            "悲伤": 2,
+            "抑郁": 1,
+            "生气": 0
+        }
+        return mood_values.get(self.pet.mood.value, 3)
+    
+    def _get_trend(self, current_value, attribute):
+        """获取属性变化趋势"""
+        if len(self.state_history) == 0:
+            return 0
+        
+        previous_state = self.state_history[-1]
+        previous_value = getattr(self.pet, attribute)
+        
+        if current_value > previous_value:
+            return 1  # 上升
+        elif current_value < previous_value:
+            return -1  # 下降
+        else:
+            return 0  # 不变
     
     def _discretize_value(self, value, bins):
         """将连续值离散化"""
@@ -1415,95 +1865,194 @@ class ReinforcementLearningSystem:
         return len(bins) - 1
     
     def choose_action(self, state):
-        """基于ε-贪婪策略选择动作"""
+        """基于改进的ε-贪婪策略选择动作（双Q学习）"""
         # 探索
         if random.uniform(0, 1) < self.exploration_rate:
-            return random.choice(self.actions)
-        # 利用
+            action = random.choice(self.actions)
+            # 记录探索动作
+            self.visitation_counts[(state, action)] += 1
+            return action
+        # 利用（双Q学习）
         else:
-            q_values = self.q_table[state]
-            if q_values:
-                return max(q_values, key=q_values.get)
+            # 合并两个Q表
+            combined_q = defaultdict(float)
+            for action in self.actions:
+                q1 = self.q_table_1[state].get(action, 0)
+                q2 = self.q_table_2[state].get(action, 0)
+                combined_q[action] = (q1 + q2) / 2
+            
+            if combined_q:
+                action = max(combined_q, key=combined_q.get)
+                self.visitation_counts[(state, action)] += 1
+                return action
             else:
-                return random.choice(self.actions)
+                action = random.choice(self.actions)
+                self.visitation_counts[(state, action)] += 1
+                return action
     
     def calculate_reward(self, state_before, action, state_after):
-        """计算奖励"""
+        """计算改进的奖励函数（包含形状奖励和内在动机）"""
         reward = 0
         
-        # 基础奖励：维持良好状态
-        if state_after["health"] >= 3:
-            reward += 1.0
+        # 基础奖励：维持良好状态（使用目标权重）
+        if state_after["health"] >= 4:
+            reward += 1.5 * self.goal_weights["health"]
+        elif state_after["health"] >= 3:
+            reward += 1.0 * self.goal_weights["health"]
+        
         if state_after["hunger"] <= 1:
-            reward += 1.0
-        if state_after["energy"] >= 3:
-            reward += 0.5
-        if state_after["hygiene"] >= 3:
-            reward += 0.5
-        if state_after["happiness"] >= 3:
-            reward += 1.0
+            reward += 1.5 * self.goal_weights["hunger"]
+        elif state_after["hunger"] <= 2:
+            reward += 1.0 * self.goal_weights["hunger"]
+        
+        if state_after["energy"] >= 4:
+            reward += 1.0 * self.goal_weights["energy"]
+        elif state_after["energy"] >= 3:
+            reward += 0.5 * self.goal_weights["energy"]
+        
+        if state_after["hygiene"] >= 4:
+            reward += 0.8 * self.goal_weights["hygiene"]
+        elif state_after["hygiene"] >= 3:
+            reward += 0.5 * self.goal_weights["hygiene"]
+        
+        if state_after["happiness"] >= 4:
+            reward += 1.5 * self.goal_weights["happiness"]
+        elif state_after["happiness"] >= 3:
+            reward += 1.0 * self.goal_weights["happiness"]
+        
+        # 形状奖励：鼓励状态改善
+        if "health_trend" in state_after and state_after["health_trend"] == 1:
+            reward += 0.3
+        elif "health_trend" in state_after and state_after["health_trend"] == -1:
+            reward -= 0.2
+        
+        if "hunger_trend" in state_after and state_after["hunger_trend"] == -1:
+            reward += 0.3
+        elif "hunger_trend" in state_after and state_after["hunger_trend"] == 1:
+            reward -= 0.2
+        
+        if "energy_trend" in state_after and state_after["energy_trend"] == 1:
+            reward += 0.2
         
         # 惩罚：不良状态
         if state_after["health"] <= 0:
-            reward -= 2.0
-        if state_after["hunger"] >= 3:
-            reward -= 1.5
+            reward -= 3.0 * self.goal_weights["health"]
+        elif state_after["health"] <= 1:
+            reward -= 1.5 * self.goal_weights["health"]
+        
+        if state_after["hunger"] >= 5:
+            reward -= 2.0 * self.goal_weights["hunger"]
+        elif state_after["hunger"] >= 4:
+            reward -= 1.0 * self.goal_weights["hunger"]
+        
         if state_after["energy"] <= 0:
-            reward -= 1.0
+            reward -= 1.5 * self.goal_weights["energy"]
+        elif state_after["energy"] <= 1:
+            reward -= 0.8 * self.goal_weights["energy"]
+        
         if state_after["hygiene"] <= 0:
-            reward -= 0.5
+            reward -= 1.0 * self.goal_weights["hygiene"]
+        elif state_after["hygiene"] <= 1:
+            reward -= 0.5 * self.goal_weights["hygiene"]
+        
         if state_after["happiness"] <= 0:
-            reward -= 1.0
+            reward -= 1.5 * self.goal_weights["happiness"]
+        elif state_after["happiness"] <= 1:
+            reward -= 0.8 * self.goal_weights["happiness"]
         
         # 特殊状态奖励/惩罚
         if state_after["is_sick"]:
-            reward -= 2.0
-        if state_after["is_sleeping"] and state_after["energy"] < 3:
-            reward += 0.5
+            reward -= 3.0
         
-        # 动作特定奖励
-        if action == "feed" and state_after["hunger"] < state_before["hunger"]:
-            reward += 1.0
-        if action == "play" and state_after["happiness"] > state_before["happiness"]:
+        if state_after["is_sleeping"] and state_after["energy"] < 3:
             reward += 0.8
-        if action == "sleep" and state_after["energy"] > state_before["energy"]:
-            reward += 0.6
-        if action == "clean" and state_after["hygiene"] > state_before["hygiene"]:
-            reward += 0.4
-        if action == "train" and any(skill > 1 for skill in self.pet.skills.values()):
-            reward += 0.3
-        if action == "explore":
-            reward += 0.2
-        if action == "rest" and state_after["health"] > state_before["health"]:
+        
+        # 心情奖励
+        if state_after["mood"] >= 5:
             reward += 0.5
+        elif state_after["mood"] <= 1:
+            reward -= 0.5
+        
+        # 动作特定奖励（更精细）
+        if action == "feed" and state_after["hunger"] < state_before["hunger"]:
+            reward += 1.2
+        if action == "play" and state_after["happiness"] > state_before["happiness"]:
+            reward += 1.0
+        if action == "sleep" and state_after["energy"] > state_before["energy"]:
+            reward += 0.8
+        if action == "clean" and state_after["hygiene"] > state_before["hygiene"]:
+            reward += 0.6
+        if action == "train" and any(skill > 1 for skill in self.pet.skills.values()):
+            reward += 0.5 * self.goal_weights["growth"]
+        if action == "explore":
+            reward += 0.3
+        if action == "rest" and state_after["health"] > state_before["health"]:
+            reward += 0.7
+        
+        # 内在动机：好奇心奖励（使用简化版本，不依赖状态元组）
+        curiosity_reward = self._calculate_curiosity_reward_simple(action)
+        reward += curiosity_reward * self.curiosity_bonus
         
         return reward
     
+    def _calculate_curiosity_reward_simple(self, action):
+        """计算好奇心奖励（简化版本，基于动作访问频率）"""
+        visit_count = self.visitation_counts.get(action, 0)
+        if visit_count == 0:
+            return 1.0
+        else:
+            return 1.0 / (1 + visit_count * 0.1)
+    
     def learn(self, state_before, action, reward, state_after, done):
-        """执行Q-learning学习"""
+        """执行双Q-learning学习"""
         # 存储经验
-        self.replay_buffer.append((state_before, action, reward, state_after, done))
+        experience = (state_before, action, reward, state_after, done)
+        self.replay_buffer.append(experience)
+        
+        # 计算优先级（基于TD误差）
+        priority = self._calculate_priority(state_before, action, reward, state_after, done)
+        self.priorities.append(priority)
         
         # 限制缓冲区大小
         if len(self.replay_buffer) > self.buffer_size:
             self.replay_buffer.pop(0)
+            self.priorities.pop(0)
         
-        # 从缓冲区采样批次
+        # 优先经验回放采样
         batch_size = min(32, len(self.replay_buffer))
-        batch = random.sample(self.replay_buffer, batch_size)
+        batch_indices = self._prioritized_sample(batch_size)
+        batch = [self.replay_buffer[i] for i in batch_indices]
         
         for s, a, r, s_next, d in batch:
-            # 计算目标Q值
-            if d:
-                target_q = r
-            else:
-                next_max_q = max(self.q_table[s_next].values()) if self.q_table[s_next] else 0
-                target_q = r + self.discount_factor * next_max_q
+            # 确保状态是可哈希的元组
+            if isinstance(s, list):
+                s = tuple(s)
+            if isinstance(s_next, list):
+                s_next = tuple(s_next)
             
-            # 更新Q值
-            current_q = self.q_table[s].get(a, 0)
-            new_q = current_q + self.learning_rate * (target_q - current_q)
-            self.q_table[s][a] = new_q
+            # 双Q学习更新
+            if random.random() < 0.5:
+                # 更新Q表1
+                best_action = max(self.q_table_2[s_next], key=self.q_table_2[s_next].get) if self.q_table_2[s_next] else a
+                if d:
+                    target_q = r
+                else:
+                    target_q = r + self.discount_factor * self.q_table_1[s_next].get(best_action, 0)
+                
+                current_q = self.q_table_1[s].get(a, 0)
+                new_q = current_q + self.learning_rate * (target_q - current_q)
+                self.q_table_1[s][a] = new_q
+            else:
+                # 更新Q表2
+                best_action = max(self.q_table_1[s_next], key=self.q_table_1[s_next].get) if self.q_table_1[s_next] else a
+                if d:
+                    target_q = r
+                else:
+                    target_q = r + self.discount_factor * self.q_table_2[s_next].get(best_action, 0)
+                
+                current_q = self.q_table_2[s].get(a, 0)
+                new_q = current_q + self.learning_rate * (target_q - current_q)
+                self.q_table_2[s][a] = new_q
         
         # 衰减探索率
         self.exploration_rate = max(self.min_exploration, self.exploration_rate * self.exploration_decay)
@@ -1512,28 +2061,88 @@ class ReinforcementLearningSystem:
         self.learning_steps += 1
         self.total_reward += reward
         self.average_reward = self.total_reward / self.learning_steps
+        self.episode_rewards.append(reward)
         
         return reward
     
+    def _calculate_priority(self, state, action, reward, next_state, done):
+        """计算经验优先级"""
+        # 确保状态是可哈希的元组
+        if isinstance(state, list):
+            state = tuple(state)
+        if isinstance(next_state, list):
+            next_state = tuple(next_state)
+        
+        # 合并Q值
+        q1 = self.q_table_1[state].get(action, 0)
+        q2 = self.q_table_2[state].get(action, 0)
+        current_q = (q1 + q2) / 2
+        
+        # 计算目标Q值
+        if done:
+            target_q = reward
+        else:
+            best_action = max(self.q_table_1[next_state], key=self.q_table_1[next_state].get) if self.q_table_1[next_state] else action
+            next_q = self.q_table_2[next_state].get(best_action, 0)
+            target_q = reward + self.discount_factor * next_q
+        
+        # TD误差
+        td_error = abs(target_q - current_q)
+        return td_error + 0.01  # 添加小常数避免零优先级
+    
+    def _prioritized_sample(self, batch_size):
+        """基于优先级的采样"""
+        if len(self.priorities) == 0 or len(self.replay_buffer) == 0:
+            return list(range(min(batch_size, len(self.replay_buffer))))
+        
+        # 确保 priorities 和 replay_buffer 长度一致
+        min_length = min(len(self.priorities), len(self.replay_buffer))
+        if min_length < len(self.priorities):
+            self.priorities = self.priorities[:min_length]
+        if min_length < len(self.replay_buffer):
+            self.replay_buffer = self.replay_buffer[:min_length]
+        
+        # 归一化优先级
+        priorities = np.array(self.priorities)
+        probabilities = priorities / priorities.sum()
+        
+        # 基于概率采样
+        indices = np.random.choice(len(self.replay_buffer), size=min(batch_size, len(self.replay_buffer)), 
+                                   replace=False, p=probabilities)
+        return indices.tolist()
+    
     def get_learning_stats(self):
         """获取学习统计信息"""
+        q_table_1_size = sum(len(v) for v in self.q_table_1.values())
+        q_table_2_size = sum(len(v) for v in self.q_table_2.values())
+        
         return {
             "learning_steps": self.learning_steps,
             "total_reward": self.total_reward,
             "average_reward": self.average_reward,
             "exploration_rate": self.exploration_rate,
             "buffer_size": len(self.replay_buffer),
-            "q_table_size": sum(len(v) for v in self.q_table.values())
+            "q_table_1_size": q_table_1_size,
+            "q_table_2_size": q_table_2_size,
+            "total_states": len(set(self.q_table_1.keys()) | set(self.q_table_2.keys())),
+            "curiosity_bonus": self.curiosity_bonus,
+            "goal_weights": self.goal_weights.copy()
         }
     
     def save_learning_data(self, filename):
         """保存学习数据"""
         data = {
-            "q_table": {str(k): v for k, v in self.q_table.items()},
+            "q_table_1": {str(k): v for k, v in self.q_table_1.items()},
+            "q_table_2": {str(k): v for k, v in self.q_table_2.items()},
             "learning_steps": self.learning_steps,
             "total_reward": self.total_reward,
             "exploration_rate": self.exploration_rate,
-            "replay_buffer": self.replay_buffer
+            "replay_buffer": self.replay_buffer,
+            "priorities": self.priorities,
+            "visitation_counts": {str(k): v for k, v in self.visitation_counts.items()},
+            "curiosity_bonus": self.curiosity_bonus,
+            "goal_weights": self.goal_weights,
+            "episode_rewards": self.episode_rewards
         }
         
         with open(filename, 'w', encoding='utf-8') as f:
@@ -1547,18 +2156,69 @@ class ReinforcementLearningSystem:
             with open(filename, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # 恢复Q-table
-            self.q_table = defaultdict(lambda: defaultdict(float))
-            for state_str, actions in data.get("q_table", {}).items():
-                # 解析状态字符串
+            # 递归将列表转换为元组
+            def list_to_tuple(obj):
+                if isinstance(obj, list):
+                    return tuple(list_to_tuple(item) for item in obj)
+                return obj
+            
+            # 恢复Q表1
+            self.q_table_1 = defaultdict(lambda: defaultdict(float))
+            for state_str, actions in data.get("q_table_1", {}).items():
                 state = eval(state_str)
-                self.q_table[state] = defaultdict(float, actions)
+                # 确保状态是可哈希的元组
+                state = list_to_tuple(state)
+                self.q_table_1[state] = defaultdict(float, actions)
+            
+            # 恢复Q表2
+            self.q_table_2 = defaultdict(lambda: defaultdict(float))
+            for state_str, actions in data.get("q_table_2", {}).items():
+                state = eval(state_str)
+                # 确保状态是可哈希的元组
+                state = list_to_tuple(state)
+                self.q_table_2[state] = defaultdict(float, actions)
             
             # 恢复其他参数
             self.learning_steps = data.get("learning_steps", 0)
             self.total_reward = data.get("total_reward", 0)
             self.exploration_rate = data.get("exploration_rate", self.exploration_rate)
-            self.replay_buffer = data.get("replay_buffer", [])
+            
+            # 递归将列表转换为元组
+            def list_to_tuple(obj):
+                if isinstance(obj, list):
+                    return tuple(list_to_tuple(item) for item in obj)
+                return obj
+            
+            # 恢复回放缓冲区，确保状态是元组（可哈希）
+            self.replay_buffer = []
+            for experience in data.get("replay_buffer", []):
+                if len(experience) == 5:
+                    s, a, r, s_next, d = experience
+                    # 将列表递归转换为元组
+                    s = list_to_tuple(s)
+                    s_next = list_to_tuple(s_next)
+                    self.replay_buffer.append((s, a, r, s_next, d))
+            
+            # 恢复优先级，并确保长度与回放缓冲区一致
+            self.priorities = data.get("priorities", [])
+            if len(self.priorities) > len(self.replay_buffer):
+                self.priorities = self.priorities[:len(self.replay_buffer)]
+            elif len(self.priorities) < len(self.replay_buffer):
+                # 如果优先级不足，补充默认值
+                self.priorities.extend([0.01] * (len(self.replay_buffer) - len(self.priorities)))
+            
+            # 恢复访问计数
+            self.visitation_counts = defaultdict(int)
+            for key_str, count in data.get("visitation_counts", {}).items():
+                key = eval(key_str)
+                # 确保键是可哈希的元组
+                key = list_to_tuple(key)
+                self.visitation_counts[key] = count
+            
+            # 恢复其他参数
+            self.curiosity_bonus = data.get("curiosity_bonus", 0.1)
+            self.goal_weights = data.get("goal_weights", self.goal_weights)
+            self.episode_rewards = data.get("episode_rewards", [])
             
             print("🧠 学习数据加载成功！")
             return True
